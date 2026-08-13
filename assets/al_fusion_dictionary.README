@@ -80,3 +80,16 @@ saying so and a partner_b_band so they remain resolvable. Four of these mark
 genes present on one panel but not the other despite being relevant to both -
 LYN, NTRK3, ABL2 and EWSR1 - and are flagged in assets/PANEL_README.md as
 candidate additions rather than silently worked around.
+
+ORIENTATION RULE FOR partner_b_band
+-----------------------------------
+When partner_b_band is set, partner_a MUST be the side that is on the panel
+and partner_b the side that is not. The single-sided lookup matches the
+observed on-panel gene against partner_a only, then compares the other
+breakpoint's cytoband against partner_b_band. A row with the off-panel gene in
+partner_a can never match, silently.
+
+check_panel_consistency.py --dictionary catches this: it reports every
+partner_a not present on the panel, so a mis-oriented row surfaces as a
+"named by the fusion dictionary but not on this panel" warning rather than
+failing quietly at report time.

@@ -45,8 +45,10 @@ Y	ALL	ALL	Ph_like_kinase_partners	HDAC9	1015590
 Y	ALL	ALL	Ph_like_kinase_partners	IL2RB	149279
 Y	ALL	ALL	Ph_like_kinase_partners	IL7R	122713
 Y	ALL	ALL	Ph_like_kinase_partners	KANK1	375816
+Y	ALL	BOTH	Ph_like_kinase_partners	LYN	234335
 Y	ALL	ALL	Ph_like_kinase_partners	MYH9	206688
 Y	ALL	ALL	Ph_like_kinase_partners	NCOR1	286375
+Y	ALL	BOTH	Ph_like_kinase_partners	NTRK3	496989
 Y	ALL	ALL	Ph_like_kinase_partners	OFD1	134641
 Y	ALL	ALL	Ph_like_kinase_partners	PAG1	244258
 Y	ALL	ALL	Ph_like_kinase_partners	PPFIBP1	271359

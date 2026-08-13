@@ -78,10 +78,10 @@ Y	AML	AML	fusion_anchors	ZBTB16	297055
 Y	AML	BOTH	named_intervals	HOXA_cluster	210000
 Y	AML	AML	named_intervals	HOXB_cluster	110000
 Y	AML	AML	rare_kinase_fusions_MDS_MPN	ALK	828813
-Y	AML	AML	rare_kinase_fusions_MDS_MPN	LYN	234335
+Y	AML	BOTH	rare_kinase_fusions_MDS_MPN	LYN	234335
 Y	AML	AML	rare_kinase_fusions_MDS_MPN	NTRK1	166101
 Y	AML	AML	rare_kinase_fusions_MDS_MPN	NTRK2	458531
-Y	AML	AML	rare_kinase_fusions_MDS_MPN	NTRK3	496989
+Y	AML	BOTH	rare_kinase_fusions_MDS_MPN	NTRK3	496989
 Y	AML	AML	rare_kinase_fusions_MDS_MPN	RAF1	180517
 Y	AML	AML	rare_kinase_fusions_MDS_MPN	RET	153281
 Y	AML	AML	rare_kinase_fusions_MDS_MPN	ROS1	238590

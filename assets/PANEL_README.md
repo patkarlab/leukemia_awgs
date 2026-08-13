@@ -4,11 +4,11 @@ Two adaptive-sampling panels, selected per sample via `meta.panel`.
 
 | | AML | ALL |
 |---|---|---|
-| Design targets | 120 | 133 |
-| T2T regions / bases | 117 / 29.94 Mb | 126 / 40.74 Mb |
-| hg38 regions / bases | 117 / 29.43 Mb | 126 / 38.00 Mb |
-| Fraction of T2T-CHM13v2.0 | 0.960% | 1.307% |
-| Shared region labels | 54 | 54 |
+| Design targets | 120 | 135 |
+| T2T regions / bases | 117 / 29.94 Mb | 128 / 41.47 Mb |
+| hg38 regions / bases | 117 / 29.43 Mb | 128 / 38.73 Mb |
+| Fraction of T2T-CHM13v2.0 | 0.960% | 1.330% |
+| Shared region labels | 56 | 56 |
 
 The ALL panel was revised after its T2T BEDs were first built: sixteen
 MPN/eosinophilia partner genes were dropped, keeping the five kinases
@@ -55,12 +55,20 @@ mappable even when targeted. The intended detection route is an IGH breakpoint
 at 4q35 together with the ERG intragenic deletion that accompanies the
 subtype; ERG is on the ALL panel.
 
-**Present on one panel but not the other.** LYN, NTRK3, ABL2 and EWSR1 are on
-the AML panel only, yet each participates in a described ALL fusion:
-LYN::NCOR1 and ETV6::NTRK3 are Ph-like ABL-class and other-kinase fusions
-respectively, ETV6::ABL2 is a kinase fusion of both lineages, and
-ZNF384::EWSR1 is a recognised ZNF384-rearranged B-ALL. Each is TKI-relevant.
-Worth confirming these omissions are intentional.
+**Present on one panel but not the other.** LYN and NTRK3 were AML-only
+despite each participating in a described Ph-like ALL fusion whose partner was
+already on the ALL panel: LYN::NCOR1 is ABL-class and dasatinib-sensitive,
+ETV6::NTRK3 is other-kinase and TRK-inhibitor sensitive under a tumour-agnostic
+approval. Both have been added to the ALL panel, reusing the AML intervals
+verbatim since the build parameters and reference are identical. Together they
+add 731,461 bp, 1.80% of the ALL panel — less than the RANBP2 over-expansion
+described in the top-level README, so fixing that funds both with room over.
+
+ABL2 and EWSR1 remain single-panel. ETV6::ABL2 is a kinase fusion of both
+lineages and ZNF384::EWSR1 is a recognised ZNF384-rearranged B-ALL, but in each
+case the on-panel side carries the subtype signal and the off-panel partner has
+a cytoband fallback in the dictionary, so the entity is still nameable. Worth
+confirming these two omissions are intentional.
 
 ## Gaps worth confirming
 

@@ -152,7 +152,7 @@ PDGFRB	TNIP1	t(5;5)(q33;q32)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5
 CSF1R	SSBP2	t(5;5)(q14;q32)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
 CSF1R	TBL1XR1	t(3;5)(q26;q32)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
 CSF1R	MEF2D	t(1;5)(q22;q32)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
-LYN	NCOR1	t(8;17)(q12;p11)	ALL	actionable		Ph-like B-ALL, ABL-class	8q12.1	WHO-5	LYN is on the AML panel only; consider adding to ALL (ABL-class Ph-like)
+LYN	NCOR1	t(8;17)(q12;p11)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	ABL-class; dasatinib-sensitive
 JAK2	PAX5	t(9;9)(p24;p13)	ALL	actionable		Ph-like B-ALL, JAK-class		WHO-5	ruxolitinib rationale
 JAK2	SSBP2	t(5;9)(q14;p24)	ALL	actionable		Ph-like B-ALL, JAK-class		WHO-5	
 JAK2	STRN3	t(9;14)(p24;q12)	ALL	actionable		Ph-like B-ALL, JAK-class		WHO-5	
@@ -168,7 +168,7 @@ JAK2	GOLGA4	t(3;9)(p22;p24)	ALL	actionable		Ph-like B-ALL, JAK-class	3p22.2	WHO-
 EPOR	LAIR1	t(19;19)	ALL	actionable		Ph-like B-ALL, JAK-class	19q13.42	WHO-5	LAIR1 off-panel; resolves to cytoband
 TYK2	MYB	t(6;19)(q23;p13)	ALL	actionable		Ph-like B-ALL, JAK-class		WHO-5	
 TYK2	SMU1	t(9;19)(p21;p13)	ALL	actionable		Ph-like B-ALL, JAK-class	9p21.1	WHO-5	SMU1 off-panel; resolves to cytoband
-NTRK3	ETV6	t(12;15)(p13;q25)	ALL	actionable		Ph-like B-ALL, other kinase	15q25.3	WHO-5	TRK-inhibitor sensitive; NTRK3 is on the AML panel only; consider adding to ALL (Ph-like other-kinase)
+NTRK3	ETV6	t(12;15)(p13;q25)	ALL	actionable		Ph-like B-ALL, other kinase		WHO-5	TRK-inhibitor sensitive; tumour-agnostic approval
 DGKH	ZFAND3	t(13;6)	ALL	emerging		Ph-like B-ALL, other kinase	6p21.2	PMID:25207766	ZFAND3 off-panel
 IL2RB	MYH9	t(22;22)(q12;q12)	ALL	emerging		Ph-like B-ALL, other kinase		PMID:25207766	
 FLT3	OFD1	t(X;13)	ALL	actionable		Ph-like B-ALL, other kinase		PMID:25207766	
