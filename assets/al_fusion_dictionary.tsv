@@ -140,7 +140,7 @@ ABL1	RCSD1	t(1;9)(q24;q34)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5
 ABL1	SNX2	t(5;9)(q15;q34)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
 ABL1	ZMIZ1	t(9;10)(q34;q22)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
 ABL1	SFPQ	t(1;9)(p34;q34)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
-ABL1	RANBP2	t(2;9)(q13;q34)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
+ABL1	RANBP2	t(2;9)(q13;q34)	ALL	actionable		Ph-like B-ALL, ABL-class	2q13	WHO-5	RANBP2 removed from the panel: T2T RefSeq annotates it as a 1.12 Mb model spanning the 2q13 RGPD duplication block. Detection comes off the ABL1 breakpoint; this side resolves to cytoband.
 ABL2	PAG1	t(1;8)(q25;q21)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
 ABL2	RCSD1	t(1;1)(q24;q25)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
 ABL2	ZC3HAV1	t(1;7)(q25;q34)	ALL	actionable		Ph-like B-ALL, ABL-class		WHO-5	
