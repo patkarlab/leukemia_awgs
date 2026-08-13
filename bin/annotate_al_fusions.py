@@ -1,0 +1,538 @@
+#!/usr/bin/env python3
+"""
+annotate_al_fusions.py
+======================
+
+Annotates a SURVIVOR-merged SV VCF against an acute-leukaemia panel.
+
+Ported from annotate_mm_translocations.py (mm-awgs-nextflow) with three
+changes that acute leukaemia requires and myeloma did not:
+
+  1. PROMISCUOUS ANCHORS. KMT2A has >100 described partners, NUP98 >30, and
+     any RARA junction is APL until proven otherwise. A dictionary of named
+     pairs cannot cover these. Anchors listed in the anchor table are
+     reported whenever they appear on either side of a junction, whatever
+     the partner is, including when the partner is off-panel.
+
+  2. SINGLE-SIDED DICTIONARY MATCHING. Some defining partners are not on the
+     panel by design: PBX1 (TCF3::PBX1) and DUX4 (IGH::DUX4) are the two
+     that matter most. When one side is on-panel and the other resolves only
+     to a cytoband, a dictionary row carrying a partner_b_band that equals
+     that cytoband still names the event, flagged as a partial match.
+
+  3. DISEASE SCOPE. The dictionary is shared between the AML and ALL panels;
+     rows are filtered to the panel in use so an ALL run does not report AML
+     entities and vice versa. Rows marked BOTH always apply.
+
+The script holds no biological priors of its own. Everything reportable
+comes from --dictionary and --anchors.
+
+Usage:
+  annotate_al_fusions.py \
+      --vcf merged.vcf.gz \
+      --panel-bed AML_panel_t2t_chr.bed \
+      --cytoband-bed chm13v2.0_cytobands_allchrs.bed \
+      --dictionary al_fusion_dictionary.tsv \
+      --anchors al_fusion_anchors.tsv \
+      --panel AML \
+      --sample SAMPLE_ID \
+      --output SAMPLE_ID.al_annotated.tsv
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import gzip
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+__version__ = "0.1.0"
+
+
+# -----------------------------------------------------------------------------
+# Panel and cytoband tables
+# -----------------------------------------------------------------------------
+@dataclass
+class PanelRegion:
+    chrom: str
+    start: int
+    end: int
+    name: str
+
+    def contains(self, chrom: str, pos: int) -> bool:
+        return chrom == self.chrom and self.start <= pos < self.end
+
+
+def load_panel(bed_path: Path) -> List[PanelRegion]:
+    out: List[PanelRegion] = []
+    with open(bed_path) as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line or line.startswith(("#", "track")):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            chrom, start, end = parts[0], int(parts[1]), int(parts[2])
+            name = parts[3] if len(parts) >= 4 else f"{chrom}:{start}-{end}"
+            out.append(PanelRegion(chrom, start, end, name))
+    if not out:
+        sys.stderr.write(f"ERROR: no panel regions parsed from {bed_path}\n")
+        sys.exit(1)
+    return out
+
+
+@dataclass
+class CytobandTable:
+    bands: Dict[str, List[Tuple[int, int, str]]]
+
+    def band_for(self, chrom: Optional[str], pos: Optional[int]) -> Optional[str]:
+        if chrom is None or pos is None:
+            return None
+        for start, end, name in self.bands.get(chrom, []):
+            if start <= pos < end:
+                return name
+        return None
+
+
+def load_cytobands(bed_path: Path) -> CytobandTable:
+    bands: Dict[str, List[Tuple[int, int, str]]] = {}
+    with open(bed_path) as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line or line.startswith(("#", "track")):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 4:
+                continue
+            bands.setdefault(parts[0], []).append(
+                (int(parts[1]), int(parts[2]), parts[3]))
+    for chrom in bands:
+        bands[chrom].sort(key=lambda t: t[0])
+    if not bands:
+        sys.stderr.write(f"ERROR: no cytobands parsed from {bed_path}\n")
+        sys.exit(1)
+    return CytobandTable(bands)
+
+
+# -----------------------------------------------------------------------------
+# Token normalisation
+# -----------------------------------------------------------------------------
+# Words that appear in region or partner labels but are not gene symbols.
+# Dropped so that IGH_locus matches IGH, and HOXA_cluster matches HOXA.
+_SUFFIX_TOKENS = {"LOCUS", "CLUSTER", "ENHANCER", "REGION", "INTERVAL"}
+
+
+def norm_tokens(name: str) -> frozenset:
+    """Reduce a partner or region label to a set of gene tokens.
+
+    Splits on '/', '_' and '+', uppercases, and drops region-suffix words.
+    'IGH_locus'      -> {IGH}
+    'TAL1/STIL'      -> {TAL1, STIL}
+    'PAR1_CRLF2_P2RY8' -> {PAR1, CRLF2, P2RY8}
+    Two labels refer to the same locus when their token sets intersect.
+
+    NKX2-1 and NKX2-5 keep their hyphen deliberately: splitting on '-' would
+    collapse both to {NKX2, 1} / {NKX2, 5} and make them cross-match.
+    """
+    raw = str(name).strip().upper().replace("+", "/").replace("_", "/")
+    return frozenset(t for t in raw.split("/") if t and t not in _SUFFIX_TOKENS)
+
+
+def strip_chr(chrom: str) -> str:
+    return chrom[3:] if chrom.startswith("chr") else chrom
+
+
+# -----------------------------------------------------------------------------
+# Dictionary and anchors
+# -----------------------------------------------------------------------------
+@dataclass
+class DictEntry:
+    tok_a: frozenset
+    tok_b: frozenset
+    band_b: str
+    row: dict
+
+
+def load_dictionary(path: Path, panel: str) -> List[DictEntry]:
+    """Load named fusion pairs, keeping rows whose disease matches the panel.
+
+    A missing dictionary is fatal here (unlike the MM version): running an
+    acute-leukaemia panel with no priors would silently report every junction
+    as unnamed, which is worse than failing at launch.
+    """
+    if not path.exists():
+        sys.stderr.write(f"ERROR: dictionary not found: {path}\n")
+        sys.exit(1)
+    out: List[DictEntry] = []
+    with open(path) as fh:
+        for row in csv.DictReader(fh, delimiter="\t"):
+            disease = (row.get("disease") or "BOTH").strip().upper()
+            if disease not in ("BOTH", panel.upper()):
+                continue
+            a = (row.get("partner_a") or "").strip()
+            b = (row.get("partner_b") or "").strip()
+            if not a or not b:
+                continue
+            out.append(DictEntry(norm_tokens(a), norm_tokens(b),
+                                 (row.get("partner_b_band") or "").strip(), row))
+    return out
+
+
+def load_anchors(path: Path, panel: str) -> Dict[str, dict]:
+    """Map gene token -> anchor row, for anchors in scope for this panel."""
+    out: Dict[str, dict] = {}
+    if not path.exists():
+        sys.stderr.write(f"WARNING: anchor table not found: {path}\n")
+        return out
+    with open(path) as fh:
+        for row in csv.DictReader(fh, delimiter="\t"):
+            disease = (row.get("disease") or "BOTH").strip().upper()
+            if disease not in ("BOTH", panel.upper()):
+                continue
+            for tok in norm_tokens(row.get("anchor") or ""):
+                out[tok] = row
+    return out
+
+
+def _band_levels(band: Optional[str]) -> List[str]:
+    """Progressively coarser forms of a cytoband label, most precise first.
+
+    '1q23.3' -> ['1q23.3', '1q23', '1q']
+
+    Exact sub-band equality is too brittle to rely on: T2T-CHM13 band
+    boundaries differ from GRCh38's, and a breakpoint in an adjacent sub-band
+    would otherwise silently lose a defining entity such as TCF3::PBX1. The
+    levels are compared in order so the match records how precise it was.
+    """
+    if not band:
+        return []
+    out = [band]
+    if "." in band:
+        out.append(band.split(".", 1)[0])
+    for i, ch in enumerate(out[-1]):
+        if ch in "pq":
+            arm = out[-1][:i + 1]
+            if arm != out[-1]:
+                out.append(arm)
+            break
+    return out
+
+
+def _band_match(observed: Optional[str], expected: str) -> Optional[str]:
+    """Return the match quality if observed and expected agree at any level."""
+    if not observed or not expected:
+        return None
+    obs_levels = _band_levels(observed)
+    exp_levels = _band_levels(expected)
+    if not obs_levels or not exp_levels:
+        return None
+    # Compare at the coarsest level the dictionary actually specifies.
+    for i, quality in enumerate(("partial_band", "partial_band", "partial_arm")):
+        if i < len(obs_levels) and i < len(exp_levels) \
+                and obs_levels[i] == exp_levels[i]:
+            return quality
+    # Dictionary gives a major band, observation a sub-band, or vice versa.
+    if set(obs_levels) & set(exp_levels):
+        return "partial_band"
+    return None
+
+
+def dictionary_lookup(dictionary: List[DictEntry], label_a: str, label_b: str,
+                      band_a: Optional[str], band_b: Optional[str]
+                      ) -> Tuple[Optional[dict], str]:
+    """Return (row, match_quality) for an unordered pair.
+
+    'full'          both sides matched on gene identity
+    'partial_band'  one side matched a gene, the other matched the
+                    dictionary's expected cytoband for its off-panel partner
+    'partial_arm'   as above but agreeing only at chromosome-arm level;
+                    treat as a lead, not a call
+    Returns (None, '') when nothing matches.
+    """
+    ta, tb = norm_tokens(label_a), norm_tokens(label_b)
+
+    for e in dictionary:
+        if (ta & e.tok_a and tb & e.tok_b) or (ta & e.tok_b and tb & e.tok_a):
+            return e.row, "full"
+
+    # One side on-panel, other side resolvable only to a band. The
+    # dictionary's partner_b_band is what makes these nameable at all.
+    best = None
+    for e in dictionary:
+        if not e.band_b:
+            continue
+        for gene_tok, other_band in ((ta, band_b), (tb, band_a)):
+            if not (gene_tok & e.tok_a):
+                continue
+            q = _band_match(other_band, e.band_b)
+            if q == "partial_band":
+                return e.row, q
+            if q and best is None:
+                best = (e.row, q)
+    return best if best else (None, "")
+
+
+def anchor_hits(anchors: Dict[str, dict], label_a: str, label_b: str) -> List[dict]:
+    """Anchor rows triggered by either side of a junction."""
+    hits, seen = [], set()
+    for label in (label_a, label_b):
+        for tok in norm_tokens(label):
+            row = anchors.get(tok)
+            if row and row["anchor"] not in seen:
+                seen.add(row["anchor"])
+                hits.append(row)
+    return hits
+
+
+# -----------------------------------------------------------------------------
+# VCF parsing (unchanged from the MM pipeline)
+# -----------------------------------------------------------------------------
+@dataclass
+class SvRecord:
+    chrom: str
+    pos: int
+    sv_id: str
+    sv_type: str
+    mate_chrom: Optional[str]
+    mate_pos: Optional[int]
+    filt: str
+    info: Dict[str, str]
+    callers: List[str] = field(default_factory=list)
+    support: str = ""
+
+
+def parse_info(info_field: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    for part in info_field.split(";"):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            out[k] = v
+        else:
+            out[part] = "True"
+    return out
+
+
+def parse_bnd_alt(alt: str) -> Tuple[Optional[str], Optional[int]]:
+    """Parse a BND ALT such as N]chr11:69500000] or [chr9:133600000[N."""
+    for bracket in ("]", "["):
+        if bracket in alt:
+            try:
+                inner = alt.split(bracket)[1].split(bracket)[0]
+                chrom, pos = inner.rsplit(":", 1)
+                return chrom, int(pos)
+            except (IndexError, ValueError):
+                continue
+    return None, None
+
+
+def infer_callers(info: Dict[str, str]) -> List[str]:
+    """Decode SURVIVOR's SUPP_VEC. Bit order is the order of input VCFs,
+    which in this pipeline is [Sniffles, CuteSV, Severus]."""
+    order = ["Sniffles", "CuteSV", "Severus"]
+    return [n for bit, n in zip(info.get("SUPP_VEC", ""), order) if bit == "1"]
+
+
+def support_reads_from(info: Dict[str, str], fmt: str,
+                       sample_cols: List[str]) -> str:
+    """Variant-supporting read count. The merged VCF carries one sample column
+    per input caller; only the caller that found the junction holds a real
+    FORMAT/DV, so take the maximum across columns, then fall back to
+    caller-specific INFO tags."""
+    if fmt:
+        keys = fmt.split(":")
+        best = None
+        for col in sample_cols:
+            if not col or col in (".", "./."):
+                continue
+            f = dict(zip(keys, col.split(":")))
+            dv = f.get("DV", "")
+            if dv.isdigit():
+                best = int(dv) if best is None else max(best, int(dv))
+        if best is not None:
+            return str(best)
+    for tag in ("RE", "SUPPORT", "SR"):
+        v = str(info.get(tag, ""))
+        if v.isdigit():
+            return v
+    first = str(info.get("SUPP_READS", "")).split(":")[0]
+    return first if first.isdigit() else ""
+
+
+def open_vcf(path: Path):
+    return gzip.open(path, "rt") if str(path).endswith(".gz") else open(path, "rt")
+
+
+def parse_vcf(vcf_path: Path) -> List[SvRecord]:
+    out: List[SvRecord] = []
+    with open_vcf(vcf_path) as fh:
+        for line in fh:
+            if not line or line.startswith("#"):
+                continue
+            cols = line.rstrip("\n").split("\t")
+            if len(cols) < 8:
+                continue
+            chrom, pos, sv_id, _ref, alt, _qual, filt, info_field = cols[:8]
+            info = parse_info(info_field)
+            sv_type = info.get("SVTYPE", "")
+            mate_chrom, mate_pos = None, None
+
+            if sv_type in ("BND", "TRA"):
+                mate_chrom, mate_pos = parse_bnd_alt(alt)
+                if mate_chrom is None:
+                    chr2, end = info.get("CHR2"), info.get("END")
+                    if chr2 and end:
+                        try:
+                            mate_chrom, mate_pos = chr2, int(end)
+                        except ValueError:
+                            pass
+            elif sv_type in ("DEL", "DUP", "INV", "INS"):
+                end = info.get("END")
+                if end:
+                    try:
+                        mate_chrom, mate_pos = chrom, int(end)
+                    except ValueError:
+                        pass
+
+            fmt = cols[8] if len(cols) > 8 else ""
+            sample_cols = cols[9:] if len(cols) > 9 else []
+            out.append(SvRecord(
+                chrom=chrom, pos=int(pos), sv_id=sv_id, sv_type=sv_type,
+                mate_chrom=mate_chrom, mate_pos=mate_pos, filt=filt, info=info,
+                callers=infer_callers(info),
+                support=support_reads_from(info, fmt, sample_cols)))
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Annotation
+# -----------------------------------------------------------------------------
+def region_for(chrom, pos, panel) -> Optional[PanelRegion]:
+    if chrom is None or pos is None:
+        return None
+    for r in panel:
+        if r.contains(chrom, pos):
+            return r
+    return None
+
+
+def characterize_side(chrom, pos, region, cytobands):
+    """Return (label, source, band) for one breakpoint side."""
+    band = cytobands.band_for(chrom, pos)
+    band_label = f"{strip_chr(chrom)}{band}" if band and chrom else None
+    if region is not None:
+        return region.name, "panel", band_label
+    if band_label:
+        return band_label, "cytoband", band_label
+    if chrom is not None and pos is not None:
+        return f"{chrom}:{pos / 1e6:.1f}Mb", "coordinate", None
+    return "OFF_PANEL", "coordinate", None
+
+
+def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name):
+    out = []
+    for r in records:
+        side_a = region_for(r.chrom, r.pos, panel)
+        side_b = region_for(r.mate_chrom, r.mate_pos, panel)
+        if side_a is None and side_b is None:
+            continue
+
+        gene_a, src_a, band_a = characterize_side(r.chrom, r.pos, side_a, cytobands)
+        gene_b, src_b, band_b = characterize_side(
+            r.mate_chrom, r.mate_pos, side_b, cytobands)
+
+        hit, quality = dictionary_lookup(dictionary, gene_a, gene_b, band_a, band_b)
+        hits = anchor_hits(anchors, gene_a, gene_b)
+
+        # An event is reportable when the dictionary names it, or when it
+        # touches a promiscuous anchor. Everything else is emitted too but
+        # carries reportable=no, so the on-panel callset stays auditable.
+        reportable = "yes" if (hit or hits) else "no"
+
+        out.append({
+            "sample":          sample,
+            "panel":           panel_name,
+            "sv_id":           r.sv_id,
+            "sv_type":         r.sv_type,
+            "filter":          r.filt,
+            "chrom_a":         r.chrom,
+            "pos_a":           str(r.pos),
+            "gene_a":          gene_a,
+            "chrom_b":         r.mate_chrom or "",
+            "pos_b":           str(r.mate_pos) if r.mate_pos is not None else "",
+            "gene_b":          gene_b,
+            "gene_a_source":   src_a,
+            "gene_b_source":   src_b,
+            "band_a":          band_a or "",
+            "band_b":          band_b or "",
+            "known_pair":      hit.get("name", "") if hit else "",
+            "entity":          hit.get("entity", "") if hit else "",
+            "tier":            hit.get("tier", "") if hit else "",
+            "known_freq":      hit.get("frequency", "") if hit else "",
+            "match_quality":   quality,
+            "anchor":          ",".join(h["anchor"] for h in hits),
+            "anchor_class":    ",".join(h["anchor_class"] for h in hits),
+            "reportable":      reportable,
+            "dict_notes":      hit.get("notes", "") if hit else "",
+            "callers":         ",".join(r.callers) or "unknown",
+            "n_callers":       str(len(r.callers)),
+            "supp_vec":        r.info.get("SUPP_VEC", ""),
+            "support_reads":   r.support,
+        })
+    return out
+
+
+COLUMNS = [
+    "sample", "panel", "sv_id", "sv_type", "filter",
+    "chrom_a", "pos_a", "gene_a", "chrom_b", "pos_b", "gene_b",
+    "gene_a_source", "gene_b_source", "band_a", "band_b",
+    "known_pair", "entity", "tier", "known_freq", "match_quality",
+    "anchor", "anchor_class", "reportable", "dict_notes",
+    "callers", "n_callers", "supp_vec", "support_reads",
+]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--vcf", required=True, type=Path)
+    ap.add_argument("--panel-bed", required=True, type=Path)
+    ap.add_argument("--cytoband-bed", required=True, type=Path)
+    ap.add_argument("--dictionary", required=True, type=Path)
+    ap.add_argument("--anchors", required=True, type=Path)
+    ap.add_argument("--panel", required=True, choices=["AML", "ALL"])
+    ap.add_argument("--sample", required=True)
+    ap.add_argument("--output", required=True, type=Path)
+    ap.add_argument("--version", action="version",
+                    version=f"%(prog)s {__version__}")
+    args = ap.parse_args()
+
+    panel = load_panel(args.panel_bed)
+    dictionary = load_dictionary(args.dictionary, args.panel)
+    anchors = load_anchors(args.anchors, args.panel)
+    cytobands = load_cytobands(args.cytoband_bed)
+    records = parse_vcf(args.vcf)
+    rows = annotate(records, panel, dictionary, anchors, args.sample,
+                    cytobands, args.panel)
+
+    with open(args.output, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=COLUMNS, delimiter="\t",
+                           lineterminator="\n", extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+
+    n_report = sum(1 for r in rows if r["reportable"] == "yes")
+    n_named = sum(1 for r in rows if r["known_pair"])
+    sys.stderr.write(
+        f"{args.sample} [{args.panel}]: {len(rows)} on-panel SV records, "
+        f"{n_report} reportable, {n_named} named by dictionary "
+        f"({len(dictionary)} pairs, {len(anchors)} anchor tokens in scope) "
+        f"-> {args.output}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

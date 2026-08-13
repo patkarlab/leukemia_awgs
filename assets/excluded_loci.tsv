@@ -1,0 +1,8 @@
+prefix	reason
+IGH	somatic hypermutation and V(D)J recombination; variant calls are recombination artefacts, not somatic mutations
+IGK	V(D)J recombination
+IGL	V(D)J recombination
+TRA	V(D)J recombination
+TRB	V(D)J recombination
+TRD	V(D)J recombination
+TRG	V(D)J recombination

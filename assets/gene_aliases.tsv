@@ -1,0 +1,46 @@
+alias	symbol	note
+MLL	KMT2A	legacy symbol, still common in cytogenetic reports
+MLL2	KMT2D	legacy symbol
+MLL3	KMT2C	legacy symbol
+MLL4	KMT2B	legacy symbol
+AF4	AFF1	KMT2A partner, cytogenetic-era name
+MLLT2	AFF1	legacy symbol
+LAF4	AFF3	KMT2A partner, cytogenetic-era name
+AF9	MLLT3	KMT2A partner, cytogenetic-era name
+ENL	MLLT1	KMT2A partner, cytogenetic-era name
+AF10	MLLT10	KMT2A partner, cytogenetic-era name
+AF17	MLLT6	KMT2A partner, cytogenetic-era name
+AF1Q	MLLT11	KMT2A partner, cytogenetic-era name
+AF6	AFDN	KMT2A partner, cytogenetic-era name
+MLLT4	AFDN	legacy symbol
+SEPT6	SEPTIN6	SEPTIN family renaming, 2021
+SEPT9	SEPTIN9	SEPTIN family renaming, 2021
+ETO	RUNX1T1	core-binding factor legacy name
+MTG8	RUNX1T1	legacy symbol
+MTG16	CBFA2T3	legacy symbol
+AML1	RUNX1	legacy symbol
+CBFA2	RUNX1	legacy symbol
+EVI1	MECOM	legacy symbol
+MDS1	MECOM	legacy symbol
+MEL1	PRDM16	legacy symbol
+MKL1	MRTFA	renamed; RBM15::MRTFA
+OTT	RBM15	legacy symbol
+MOZ	KAT6A	legacy symbol
+MYST3	KAT6A	legacy symbol
+HOX11	TLX1	T-ALL transcription factor legacy name
+TCL3	TLX1	legacy symbol
+HOX11L2	TLX3	T-ALL transcription factor legacy name
+SCL	TAL1	legacy symbol
+TCL5	TAL1	legacy symbol
+SIL	STIL	STIL::TAL1 is written SIL-TAL1 almost everywhere
+RBTN1	LMO1	legacy symbol
+RBTN2	LMO2	legacy symbol
+TTG1	LMO1	legacy symbol
+TTG2	LMO2	legacy symbol
+E2A	TCF3	legacy symbol
+ITF2	TCF4	legacy symbol
+PU.1	SPI1	legacy symbol
+CIP2A	CCDC88C	alternative symbol
+FGFR1OP	CEP43	FGFR1 partner renaming
+CEP110	CNTRL	FGFR1 partner renaming
+TIF1A	TRIM24	legacy symbol

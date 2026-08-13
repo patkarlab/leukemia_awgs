@@ -1,0 +1,6 @@
+sample_id,minknow_bam,panel,timepoint,notes
+AML_001,/goast/al_awgs/runs/20260801_AML/AML_001/bam_pass,AML,full,
+AML_002,/goast/al_awgs/runs/20260801_AML/AML_002/bam_pass,AML,full,
+BALL_001,/goast/al_awgs/runs/20260805_ALL/BALL_001/bam_pass,ALL,full,
+TALL_001,/goast/al_awgs/runs/20260805_ALL/TALL_001/bam_pass,ALL,full,ETP phenotype on flow
+AML_002_18h,/goast/al_awgs/runs/20260801_AML/AML_002/bam_pass_18h,AML,18h,early snapshot of AML_002

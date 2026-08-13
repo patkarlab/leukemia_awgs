@@ -1,0 +1,82 @@
+al_fusion_dictionary.tsv and al_fusion_anchors.tsv
+==================================================
+
+Two files, because acute leukaemia needs two kinds of prior and myeloma only
+needed one.
+
+1. al_fusion_dictionary.tsv - NAMED PAIRS
+-----------------------------------------
+One row per recurrent gene pair. Columns:
+
+  partner_a, partner_b   Gene symbols. Order is irrelevant.
+  name                   Cytogenetic notation, e.g. t(8;21)(q22;q22.1)
+  disease                AML, ALL, or BOTH. Rows are filtered to the panel in
+                         use, so an ALL run does not report AML entities.
+  tier                   defining   WHO-5 / ICC disease-defining
+                         risk       ELN 2022 risk-assigning
+                         actionable drives a specific drug
+                         emerging   described but not classification-defining
+  frequency              Approximate, for context in the report
+  entity                 WHO-5 / ICC entity name
+  partner_b_band         Expected cytoband of partner_b. Only needed when
+                         partner_b is off-panel. See "partial matching" below.
+  references             WHO-5, ICC 2022, ELN 2022, or a PMID
+  notes                  Free text
+
+MATCHING. Partner names are not compared to BED labels as strings. Each name
+is reduced to a set of gene tokens (split on / and _, uppercased, with
+region-suffix words like "locus" dropped) and two partners match when their
+token sets intersect. So IGH_locus matches a BED label of IGH, and TAL1/STIL
+matches either TAL1 or STIL. Order within a pair and within a compound is
+irrelevant. Implemented in bin/annotate_al_fusions.py (norm_tokens,
+dictionary_lookup).
+
+PARTIAL MATCHING. Two defining B-ALL entities have a partner that is off-panel
+by design: PBX1 in TCF3::PBX1, and DUX4 in IGH::DUX4. When one side of a
+junction is on-panel and the other resolves only to a cytoband, a row carrying
+a partner_b_band equal to that band still names the event, recorded as
+match_quality=partial_band. Band comparison is tiered - exact sub-band, then
+major band, then arm - because T2T-CHM13 band boundaries differ from GRCh38's
+and exact-string matching would lose a defining entity to a one-band shift.
+An arm-level agreement is recorded as partial_arm and should be read as a
+lead, not a call.
+
+2. al_fusion_anchors.tsv - PROMISCUOUS ANCHORS
+----------------------------------------------
+A named-pair dictionary cannot work for KMT2A, which has over a hundred
+described partners, or NUP98, which has more than thirty, or the Ig and TR
+loci, whose partner is the whole point and is frequently novel. Missing a
+KMT2A junction because its partner was not in a list would be a clinically
+material false negative.
+
+An anchor is reported whenever it appears on either side of a junction,
+whatever the partner is, including when the partner is off-panel or resolves
+only to a cytoband. Columns:
+
+  anchor          Gene or locus label
+  anchor_class    promiscuous_5prime, promiscuous_3prime, enhancer_hijack,
+                  kinase_ABL_class, kinase_JAK_class, kinase_other,
+                  tandem_duplication, enhancer_target
+  disease         AML, ALL, or BOTH
+  partner_policy  "any" for partner-agnostic reporting; "self" for
+                  intragenic events (UBTF-TD, MYB duplication)
+  notes           Free text
+
+EDITING
+-------
+Adding a pair or an anchor needs no code change. Keep partner names as real
+gene symbols: matching is token-based, so an invented joined token will not
+resolve. The only special word the normaliser strips is "locus".
+
+CURATION STATUS
+---------------
+Rows with references beginning "panel:" carry the panel design's own
+designation rather than a citation, and have not been independently verified.
+They are all tier=emerging. Curate them against your source before using them
+for clinical reporting.
+
+Rows whose partner is absent from the corresponding panel BED carry a note
+saying so and a partner_b_band so they remain resolvable. Four of these mark
+genes present on one panel but not the other despite being relevant to both -
+LYN, NTRK3, ABL2 and EWSR1 - and are flagged in assets/PANEL_README.md as
+candidate additions rather than silently worked around.

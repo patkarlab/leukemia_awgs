@@ -1,0 +1,5 @@
+gene	disease	reference	mode	min_len	max_len	min_support	label	notes
+FLT3	BOTH	hg38	insertion	15	500	3	FLT3-ITD	ITD length and allelic ratio are both ELN 2022 risk inputs; general-purpose SNV callers split these into multiple small indels
+UBTF	AML	hg38	insertion	20	300	3	UBTF-TD	exon 13 tandem duplication producing a HOXA/HOXB expression signature; no fusion partner exists
+KMT2A	BOTH	t2t	split_read	1000	100000	2	KMT2A-PTD	classically exons 2-8 or 2-10; invisible to KMT2A break-apart FISH because both breakpoints are intragenic
+MYB	ALL	t2t	split_read	500	200000	2	MYB-dup	intragenic duplication at 6q23 as an alternative to TRB::MYB

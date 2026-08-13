@@ -1,0 +1,55 @@
+anchor	anchor_class	disease	partner_policy	notes
+KMT2A	promiscuous_5prime	BOTH	any	11q23.3; >100 described partners. Report any KMT2A junction regardless of partner identity.
+NUP98	promiscuous_5prime	AML	any	>30 described partners. Report any NUP98 junction regardless of partner identity.
+IGH_locus	enhancer_hijack	ALL	any	Report any IGH junction; partner may be off-panel (e.g. DUX4 at 4q35).
+IGK_locus	enhancer_hijack	ALL	any	Light-chain enhancer hijack.
+IGL_locus	enhancer_hijack	ALL	any	Light-chain enhancer hijack.
+TRB_locus	enhancer_hijack	ALL	any	TCRB enhancer hijack; the T-ALL TF partner defines the subtype.
+TRA_TRD_locus	enhancer_hijack	ALL	any	TCRA/D enhancer hijack.
+TRG_locus	enhancer_hijack	ALL	any	TCRG enhancer hijack; also biallelic TRG deletion as a prognostic marker.
+BCL11B	enhancer_hijack	BOTH	any	14q32 distal enhancer; ALAL and T-ALL. Also BETA amplification.
+MECOM	promiscuous_3prime	AML	any	3q26.2; enhancer hijack from many donors, not only RPN1.
+RARA	promiscuous_3prime	AML	any	Any RARA junction is APL until proven otherwise. Escalate immediately.
+ETV6	promiscuous	BOTH	any	12p13.2; both 5' and 3' partner in many fusions.
+ABL1	kinase_ABL_class	BOTH	any	Any ABL1 junction implies TKI-treatable disease.
+ABL2	kinase_ABL_class	ALL	any	ABL-class Ph-like.
+PDGFRA	kinase_ABL_class	AML	any	Imatinib-responsive.
+PDGFRB	kinase_ABL_class	BOTH	any	Imatinib-responsive.
+CSF1R	kinase_ABL_class	ALL	any	ABL-class Ph-like.
+LYN	kinase_ABL_class	ALL	any	ABL-class Ph-like.
+JAK2	kinase_JAK_class	BOTH	any	JAK-class; ruxolitinib rationale.
+EPOR	kinase_JAK_class	ALL	any	JAK-class Ph-like.
+TYK2	kinase_JAK_class	ALL	any	JAK-class Ph-like.
+CRLF2	kinase_JAK_class	ALL	any	IGH::CRLF2 or P2RY8::CRLF2.
+FGFR1	kinase_other	AML	any	8p11 MPN; pemigatinib.
+FLT3	kinase_other	BOTH	any	Rearranged FLT3 is distinct from FLT3-ITD; both are actionable.
+NTRK1	kinase_other	BOTH	any	TRK inhibitor.
+NTRK2	kinase_other	BOTH	any	TRK inhibitor.
+NTRK3	kinase_other	BOTH	any	TRK inhibitor.
+ALK	kinase_other	BOTH	any	ALK inhibitor.
+ROS1	kinase_other	BOTH	any	ROS1 inhibitor.
+RET	kinase_other	BOTH	any	RET inhibitor.
+SYK	kinase_other	AML	any	Rare myeloid kinase fusion.
+RAF1	kinase_other	BOTH	any	MEK inhibitor rationale.
+PAX5	promiscuous	ALL	any	PAX5alt; >20 partners plus PAX5 P80R and PAX5 amplification.
+ZNF384	promiscuous_3prime	ALL	any	Many 5' partners.
+NUTM1	promiscuous_3prime	ALL	any	Many 5' partners; infant B-ALL.
+MEF2D	promiscuous_5prime	ALL	any	Several 3' partners.
+TLX3	enhancer_target	ALL	any	Usually BCL11B enhancer-driven; may be cryptic.
+TAL1	enhancer_target	ALL	any	STIL deletion, TR loci, or non-coding MuTE enhancer mutation.
+SPI1	promiscuous_3prime	ALL	any	STMN1 or TCF7 5' partner; very poor outcome.
+RUNX1	promiscuous	AML	any	21q22.1; many 3' partners beyond RUNX1T1 (MECOM, CBFA2T2/3, USP42). Report any RUNX1 junction.
+ERG	promiscuous	BOTH	any	21q22.2; FUS::ERG in AML, ERG deletion in DUX4-r B-ALL.
+MYC	enhancer_hijack	BOTH	any	8q24.21; Ig-locus hijack in B-ALL, TR-locus hijack in T-ALL.
+TCF3	promiscuous_5prime	ALL	any	19p13.3; PBX1, HLF and ZNF384 partners. PBX1 is off-panel.
+ZNF362	promiscuous_3prime	ALL	any	1p35.1; ZNF384 paralogue, same expression subtype.
+NUP214	promiscuous	BOTH	any	9q34.13; DEK, SET and ABL1 partners across AML and T-ALL.
+MLLT10	promiscuous_3prime	BOTH	any	10p12.31; KMT2A and PICALM 5' partners.
+CBFA2T3	promiscuous_3prime	BOTH	any	16q24.3; GLIS2, RUNX1, NFIA and PAX5 partners.
+PICALM	promiscuous_5prime	BOTH	any	11q14.2; MLLT10 partner, AML and T-ALL.
+TLX1	enhancer_target	ALL	any	10q24.31; TR-locus hijack defines the TLX1 T-ALL subtype.
+LMO2	enhancer_target	ALL	any	11p13; TR-locus hijack or non-coding enhancer deletion.
+MEF2C	enhancer_target	ALL	any	5q14.3; dysregulation marks immature/ETP T-ALL.
+CRLF2	kinase_JAK_class	ALL	any	Xp22.33/Yp11.32; IGH::CRLF2 or P2RY8::CRLF2 PAR1 deletion.
+UBTF	tandem_duplication	AML	self	17q21.31; UBTF-TD is an exon-13 tandem duplication, not a fusion. Detect as an intragenic DUP/INS, not a junction to a partner.
+MYB	tandem_duplication	ALL	self	6q23.3; MYB duplication as well as TRB::MYB.
