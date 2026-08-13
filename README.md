@@ -10,10 +10,21 @@ Status: `v0.1.0-dev`. See [Scope](#v01-scope) and [Known limitations](#known-lim
 
 | Reference | Used for | Why |
 |---|---|---|
-| **T2T-CHM13v2.0** | SV calling, fusion annotation, intragenic duplication, on-target QC | Fusion partners cluster in regions hg38 represents poorly. KMT2A sits in a segmentally duplicated stretch of 11q23 where hg38 alt-contigs pull away the supplementary alignments that intragenic duplication calling depends on. The Ig and TR loci are fully assembled in T2T and fragmented in hg38. |
+| **T2T-CHM13v2.0** | **Adaptive sampling on the P2i**, SV calling, fusion annotation, intragenic duplication, on-target QC | Fusion partners cluster in regions hg38 represents poorly. KMT2A sits in a segmentally duplicated stretch of 11q23 where hg38 alt-contigs pull away the supplementary alignments that intragenic duplication calling depends on. The Ig and TR loci are fully assembled in T2T and fragmented in hg38. |
 | **hg38** | SNV, indel, large CNV, phased germline, VEP annotation, tandem duplication | Mature tooling. ClairS-TO, ichorCNA, Clair3 and VEP all ship hg38-coordinate reference panels. Clinical exon numbering and the ELN 2022 risk tables assume hg38. |
 
-Both tracks consume the same MinKNOW BAM and run in parallel.
+Both tracks consume the same MinKNOW BAM and run in parallel, but they are not
+equal partners. Adaptive sampling runs against T2T on the P2i, so the
+NC_-named T2T BED is the contract with the instrument and decides whether
+reads exist at all; reads outside it are ejected mid-strand. The hg38 BED is
+downstream only and decides whether data that already exists gets analysed.
+
+That asymmetry matters when the two disagree. A region on T2T but not hg38 was
+sequenced and merely goes unanalysed, which a rebuilt hg38 BED and a re-run of
+the hg38 track recovers from the existing BAMs. A region on hg38 but not T2T
+was never enriched, so downstream callers run over it and find close to
+nothing, and no reanalysis recovers it. `bin/check_panel_consistency.py`
+reports both, worst first.
 
 ## One pipeline, two panels
 
@@ -155,13 +166,17 @@ from on-target depth; ploidy classification.
    0.7% of that panel). Worth re-deriving the T2T BEDs from the current hg38
    design and checking `RANBP2` specifically.
 
-2. **The ALL T2T chrY coverage does not match the design.** The design
-   specifies `PAR1_CRLF2_P2RY8_Y` as a fixed 500 kb window at chrY:1,150,000
-   to 1,650,000, and the hg38 BED has it. The T2T BEDs instead carry a 175 kb
-   `P2RY8` gene-body region at chrY:1,275,950 to 1,451,516. P2RY8::CRLF2
+2. **The ALL T2T chrY window is a sequencing gap, not an annotation gap.** The
+   design specifies `PAR1_CRLF2_P2RY8_Y` as a fixed 500 kb window at
+   chrY:1,150,000 to 1,650,000, and the hg38 BED has it. The T2T BEDs instead
+   carry a 175 kb `P2RY8` gene-body region at chrY:1,275,950 to 1,451,516.
+
+   Because adaptive sampling runs against T2T, the missing 325 kb was never
+   enriched on any sample sequenced with the current NC_ BED. P2RY8::CRLF2
    arises from an interstitial PAR1 deletion whose breakpoints are distributed
-   across PAR1, so a gene-body window will miss breakpoints falling outside
-   P2RY8 itself.
+   across PAR1, so breakpoints falling outside the P2RY8 gene body are absent
+   from the data rather than merely unreported. Re-sequencing is the only
+   remedy for samples already run.
 
    Two further consequences follow from PAR1 being real sequence on both X and
    Y in T2T-CHM13v2.0 rather than N-masked as in the hg38 analysis set. PAR1

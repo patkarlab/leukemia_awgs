@@ -18,10 +18,25 @@ pipeline:
   <PANEL>_panel_hg38.bed       ClairS-TO calling region, ichorCNA mask, the
                                SNV panel filter, tandem duplication
 
-Nothing in the pipeline compares them. A gene present in the T2T BED but not
-the hg38 BED still gets its fusions called and never appears in the SNV
-report, and no log line says so. That asymmetry is what makes this worth an
-explicit check rather than a code review.
+Nothing in the pipeline compares them, and the two failure directions are not
+symmetric, because adaptive sampling on the P2i runs against T2T.
+
+The NC_-named T2T BED is the contract with the instrument: it decides whether
+reads exist at all. Reads falling outside it are ejected mid-strand, leaving
+only off-target depth. The hg38 BED is downstream and decides only whether
+data that already exists gets analysed. So:
+
+  on T2T, not on hg38   sequenced at full on-target depth, then excluded from
+                        the calling region. Recoverable: rebuild the hg38 BED
+                        and re-run the hg38 track over the existing BAMs.
+
+  on hg38, not on T2T   never enriched. Downstream callers are pointed at the
+                        region and find close to nothing. NOT recoverable
+                        without re-sequencing.
+
+Neither is logged by the pipeline, and the second is silent in a way that
+looks like a negative result. That is what makes this worth an explicit check
+rather than a code review.
 
 Entirely data-driven: it reads whatever files it is given and holds no gene
 list of its own.
@@ -146,7 +161,9 @@ def main() -> int:
                     help="Relative per-chromosome base difference between the "
                          "T2T and hg38 BEDs above which a chromosome is "
                          "flagged [0.30]. Coordinates differ between "
-                         "references, so exact agreement is not expected.")
+                         "references, so exact agreement is not expected. "
+                         "Where T2T covers less than hg38, the shortfall is "
+                         "sequencing that did not happen.")
     ap.add_argument("--strict", action="store_true",
                     help="Exit non-zero on any mismatch. Without it, only a "
                          "missing or empty BED is an error.")
@@ -200,16 +217,29 @@ def main() -> int:
     if chr_n and h_n:
         only_t2t = chr_tok - h_tok
         only_hg38 = h_tok - chr_tok
-        if only_t2t:
-            warnings.append("genes on T2T but not hg38")
-            report("In T2T but not hg38 - fusions called, no SNV reporting",
-                   only_t2t)
+        # Reported worst-first: an hg38-only gene means data that was never
+        # acquired, which no reanalysis recovers.
         if only_hg38:
-            warnings.append("genes on hg38 but not T2T")
-            report("In hg38 but not T2T - SNVs reported, no fusion detection",
+            warnings.append(
+                "NOT SEQUENCED: genes on hg38 but not T2T. Adaptive sampling "
+                "runs against T2T, so these were never enriched. Not "
+                "recoverable without re-sequencing.")
+            report("On hg38 but not T2T - NOT enriched during sequencing; "
+                   "only off-target depth exists, and downstream callers will "
+                   "run over the region and find almost nothing",
                    only_hg38)
+        if only_t2t:
+            warnings.append(
+                "captured but not analysed: genes on T2T but not hg38. "
+                "Recoverable by rebuilding the hg38 BED and re-running the "
+                "hg38 track over existing BAMs.")
+            report("On T2T but not hg38 - sequenced at on-target depth, then "
+                   "excluded from the SNV calling region",
+                   only_t2t)
 
-        drift = compare_chrom_coverage(h_pc, chr_pc, "hg38", "T2T",
+        # T2T listed first: it is the BED the instrument enriches against, so
+        # it is the one that determines what was actually sequenced.
+        drift = compare_chrom_coverage(chr_pc, h_pc, "T2T", "hg38",
                                        args.coverage_tolerance)
         if drift:
             warnings.append("per-chromosome coverage differs between "
