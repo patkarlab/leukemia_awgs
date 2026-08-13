@@ -120,3 +120,34 @@ amplified region is typically a few megabases of 21q22 and the diagnostic
 criterion is copy number of the RUNX1 region specifically. RUNX1 is on both
 panels, so per-region on-target depth from `QC_ONTARGET` is a better starting
 point than the genome-wide CNV track. This is not yet automated.
+
+## Pending design changes
+
+### ALL: CDKN2A and CDKN2B added to the design table, not yet built
+
+Added under `ELN_risk_and_comutation`, `SCOPE=ALL`. 9p21 deletion occurs in
+roughly 70% of T-ALL and 30% of B-ALL, making it one of the commonest lesions
+in the disease, and it is the fourth term of the IKZF1plus classifier
+alongside IKZF1, PAX5 and PAR1, all three of which were already on the panel.
+
+The two genes lie about 8 kb apart, so at the default flank they merge into a
+single region labelled `CDKN2A/CDKN2B` of roughly 140 kb, standalone on chr9
+between MLLT3 at 20.7 Mb and PAX5 at 36.8 Mb. The default flank is deliberate:
+it supports deletion detection by depth, which is what the clinical call
+needs, rather than breakpoint mapping, which would not resolve at this panel's
+on-target depth.
+
+The `BASES` column on both rows is a placeholder of 0 until the rebuild.
+`build_panel.py` reads only the first five columns of the target table, so it
+ignores that field, and reports true per-group totals on stderr.
+
+Rebuild required: `ALL_panel_hg38.bed` via `build_panel.py`, then the T2T BEDs
+by the usual process.
+
+### AML: 17p / TP53 window deferred
+
+TP53 currently receives a centred window of plus or minus 500 kb. Widening it
+was considered and deferred pending review of data from the batch currently
+sequencing. Note when revisiting that `CENTERED` in `build_panel.py` is shared
+across both panels and TP53 is `SCOPE=BOTH`, so changing its half-width widens
+TP53 on the ALL panel too unless `CENTERED` is made panel-aware first.

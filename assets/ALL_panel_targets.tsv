@@ -1,6 +1,8 @@
 KEEP	PANEL	SCOPE	GROUP	GENE_OR_REGION	BASES
 Y	ALL	BOTH	CAM2026_new_entities	BCL11B	1000000
 Y	ALL	BOTH	CAM2026_new_entities	MYB	137865
+Y	ALL	ALL	ELN_risk_and_comutation	CDKN2A	0
+Y	ALL	ALL	ELN_risk_and_comutation	CDKN2B	0
 Y	ALL	BOTH	ELN_risk_and_comutation	CEBPA	102631
 Y	ALL	BOTH	ELN_risk_and_comutation	JAK2	244673
 Y	ALL	BOTH	ELN_risk_and_comutation	NPM1	123769
