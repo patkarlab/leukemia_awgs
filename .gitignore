@@ -5,3 +5,10 @@ results*/
 *.pyc
 __pycache__/
 .DS_Store
+beta.csv
+titration.csv
+results_beta/
+results_titration/
+samples_*.csv
+run_*.log
+sequences/

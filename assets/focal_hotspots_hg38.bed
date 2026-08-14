@@ -1,0 +1,12 @@
+# Annotation windows for bin/call_tandem_dup.py, hg38.
+#
+# A call landing in one of these reports the col-4 label in its `hotspot`
+# column and is eligible for confidence=high. A call outside them is demoted
+# to low regardless of read support: on real AML data, seven of eight verified
+# FLT3 duplications sat 19-90 kb from this window and two recurred at identical
+# coordinates in unrelated patients.
+#
+# VERIFY against your own annotation before clinical use. FLT3 is on the minus
+# strand, so exon 14 lies at higher coordinates than exon 15.
+chr13	28033700	28034500	FLT3_JM_exon14_15
+chr17	44210791	44210947	UBTF_exon13_TD

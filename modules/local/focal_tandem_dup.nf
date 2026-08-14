@@ -33,6 +33,7 @@ process FOCAL_TANDEM_DUP {
         --max-len       ${target.max_len} \\
         --min-support   ${target.min_support} \\
         --min-mapq      ${params.focal_dup_min_mapq} \\
+        --min-spanning-depth ${params.focal_dup_min_spanning_depth} \\
         --min-tandem-identity ${params.focal_dup_min_tandem_identity}
 
     cat <<-END_VERSIONS > versions.yml

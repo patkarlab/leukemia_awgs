@@ -286,10 +286,58 @@ def spanning_depth(bam: "pysam.AlignmentFile", chrom: str, pos: int,
     return n
 
 
+def grade(length: int, support: int, spanning: int, hotspot: str,
+          identity: float, have_hotspot_bed: bool) -> Tuple[str, str]:
+    """Grade a verified duplication, returning (confidence, reason).
+
+    Position dominates. On real AML data at 20 h, a FLT3 scan over the whole
+    gene produced eight verified tandem duplications across three samples and
+    only one was a plausible ITD: 63 bp, in frame, inside the exon 14/15
+    juxtamembrane window. The other seven sat 19-90 kb away, and two recurred
+    at identical coordinates in unrelated patients, which is the signature of a
+    site artefact rather than of somatic events.
+
+    So a call outside the hotspot is demoted regardless of how much read
+    support it carries. Support level cannot distinguish a reproducible
+    alignment artefact from a clone; position can.
+
+    Frame is the second axis. In-frame is near-universal for real FLT3-ITDs,
+    since the mechanism depends on preserving the reading frame through the
+    juxtamembrane domain. Out of frame is not disqualifying on its own but does
+    not survive being out of hotspot as well.
+    """
+    reasons = []
+    if have_hotspot_bed:
+        if hotspot:
+            pos_ok = True
+        else:
+            pos_ok = False
+            reasons.append("outside annotated hotspot")
+    else:
+        # No BED supplied: position cannot be judged, so do not credit or
+        # penalise it. Say so rather than implying the call was positionally
+        # vetted.
+        pos_ok = None
+        reasons.append("no hotspot BED supplied; position not assessed")
+
+    if length % 3:
+        reasons.append("out of frame")
+    if spanning and support / spanning < 0.05:
+        reasons.append("allelic ratio below 0.05")
+    if identity < 0.80:
+        reasons.append(f"tandem identity {identity:.2f}")
+
+    if pos_ok is False:
+        return "low", "; ".join(reasons)
+    if pos_ok is True and length % 3 == 0 and identity >= 0.80:
+        return "high", "; ".join(reasons)
+    return "moderate", "; ".join(reasons)
+
+
 COLUMNS = ["sample", "gene", "label", "chrom", "ref_pos", "dup_length_bp",
            "in_frame", "support_reads", "spanning_reads", "allelic_ratio",
            "tandem_verified", "tandem_identity", "duplicated_side",
-           "hotspot", "callers", "note"]
+           "hotspot", "confidence", "callers", "note"]
 
 
 def main() -> int:
@@ -320,6 +368,15 @@ def main() -> int:
     ap.add_argument("--max-len", type=int, default=500)
     ap.add_argument("--min-support", type=int, default=3,
                     help="Minimum supporting reads to emit a call [3].")
+    ap.add_argument("--min-spanning-depth", type=int, default=10,
+                    help="Minimum reads spanning the insertion point [10]. "
+                         "Without a denominator floor, three reads of "
+                         "background at an off-target locus clears "
+                         "--min-support and produces a call from noise.")
+    ap.add_argument("--hotspot-only", action="store_true",
+                    help="Emit only calls inside an annotated hotspot. Off by "
+                         "default so the full evidence stays visible; the "
+                         "confidence column carries the same judgement.")
     ap.add_argument("--min-mapq", type=int, default=20)
     ap.add_argument("--pos-tolerance", type=int, default=20,
                     help="Clustering tolerance on insertion position [20 bp].")
@@ -373,8 +430,14 @@ def main() -> int:
         if not verified and not args.emit_unverified:
             continue
         depth = spanning_depth(bam, chrom, c.ref_pos, args.min_mapq)
+        if depth < args.min_spanning_depth:
+            continue
         ratio = (c.n_support / depth) if depth else 0.0
         hs = hotspot_label(hotspots, chrom, c.ref_pos)
+        conf, why = grade(c.length, c.n_support, depth, hs, ident,
+                          bool(hotspots))
+        if args.hotspot_only and not hs:
+            continue
         rows.append({
             "sample": args.sample,
             "gene": args.gene,
@@ -390,8 +453,9 @@ def main() -> int:
             "tandem_identity": f"{ident:.2f}",
             "duplicated_side": side,
             "hotspot": hs,
+            "confidence": conf,
             "callers": "call_tandem_dup",
-            "note": "" if verified else "failed tandem check; not a called duplication",
+            "note": why if verified else "failed tandem check; not a called duplication",
         })
 
     with open(args.output, "w", newline="") as fh:
@@ -401,10 +465,12 @@ def main() -> int:
         w.writerows(rows)
 
     n_called = sum(1 for r in rows if r["tandem_verified"] == "yes")
+    n_high = sum(1 for r in rows if r.get("confidence") == "high")
     sys.stderr.write(
         f"{args.sample}: {args.gene} {region}, {n_window_reads} reads, "
         f"{len(raws)} raw insertions >= {args.min_len} bp, "
-        f"{len(clusters)} clusters, {n_called} verified TD -> {args.output}\n")
+        f"{len(clusters)} clusters, {n_called} verified TD "
+        f"({n_high} high confidence) -> {args.output}\n")
     if n_window_reads == 0:
         sys.stderr.write(
             f"WARNING: no reads at {region}. Either the region is "
