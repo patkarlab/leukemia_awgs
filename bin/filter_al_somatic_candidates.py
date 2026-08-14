@@ -19,7 +19,9 @@ For each input *_somatic_candidates.tsv (VEP-annotated Clair3/ClairS-TO output):
 
 Outputs (filenames unchanged for downstream compatibility):
   <stem>.al_filtered.tsv    in-panel + reportable rows, with Filter column
-  <stem>.al_clinical.tsv    the Filter == PASS subset
+  <stem>.al_clinical.tsv    the Filter == PASS subset, i.e. on-panel,
+                            reportable consequence, not a common polymorphism,
+                            and above the depth and alt-count floors
   al_filter_summary.tsv     one row per input file
 
 No sample-specific variant, gene-pair, or finding is hardcoded; only column
@@ -220,7 +222,7 @@ def af_to_pct(value):
 
 
 def filter_one_file(input_path, outdir, max_pop_af, include_ig, panel,
-                    keep_off_panel):
+                    keep_off_panel, min_depth=10, min_alt_count=3):
     stem = os.path.basename(input_path)
     for suffix in (".tsv", ".txt"):
         if stem.endswith(suffix):
@@ -273,9 +275,27 @@ def filter_one_file(input_path, outdir, max_pop_af, include_ig, panel,
         row["panel_label"] = label
         row["csq_primary"] = primary
 
-        # 5. Soft polymorphism flag.
+        # 5. Soft flags. Both are labels rather than exclusions, so the
+        #    evidence stays visible and the reason is on the row.
         pop_af = safe_float(row.get("pop_af_max"))
-        row["Filter"] = "COMMON_POLYMORPHISM" if (pop_af is not None and pop_af > max_pop_af) else "PASS"
+        dp = safe_float(row.get("DP"))
+        alt = safe_float(row.get("ALT_COUNT"))
+
+        flags = []
+        if pop_af is not None and pop_af > max_pop_af:
+            flags.append("COMMON_POLYMORPHISM")
+        # A depth gate matters here because VAF alone cannot distinguish a
+        # clone from a coincidence: one alt read on a depth of two reports as
+        # 50%, which reads exactly like a heterozygous somatic variant. On the
+        # first real AML run every low-depth call was a single read on a depth
+        # of two or three, and one was a nonsense variant that would have
+        # demanded explanation on a report.
+        if dp is not None and dp < min_depth:
+            flags.append(f"LOW_DEPTH")
+        if alt is not None and alt < min_alt_count:
+            flags.append(f"LOW_ALT_COUNT")
+
+        row["Filter"] = ",".join(flags) if flags else "PASS"
 
         kept.append(row)
 
@@ -308,15 +328,19 @@ def filter_one_file(input_path, outdir, max_pop_af, include_ig, panel,
     write_tsv(clinical_path, clinical)
 
     n_pass = len(clinical)
-    n_common = sum(1 for r in kept if r["Filter"] == "COMMON_POLYMORPHISM")
+    n_common = sum(1 for r in kept if "COMMON_POLYMORPHISM" in r["Filter"])
+    n_lowdp  = sum(1 for r in kept if "LOW_DEPTH" in r["Filter"]
+                                   or "LOW_ALT_COUNT" in r["Filter"])
     genes_hit = sorted({r["panel_label"] for r in clinical})
     sys.stderr.write(
         f"[{stem}] input={n_input}  in-panel+reportable={len(kept)}  "
-        f"PASS={n_pass}  COMMON_POLYMORPHISM={n_common}  off-panel-reportable={n_off_panel}\n"
+        f"PASS={n_pass}  COMMON_POLYMORPHISM={n_common}  "
+        f"LOW_DEPTH={n_lowdp}  off-panel-reportable={n_off_panel}\n"
     )
     sys.stderr.write(f"[{stem}] PASS genes: {', '.join(genes_hit) if genes_hit else '(none)'}\n")
     return {"sample": stem, "input": n_input, "kept": len(kept),
             "pass": n_pass, "common_polymorphism": n_common,
+            "low_depth": n_lowdp,
             "off_panel_reportable": n_off_panel}
 
 
@@ -334,6 +358,14 @@ def parse_args():
     ap.add_argument("--max-pop-af", type=float, default=0.01,
                     help="pop_af_max above this is flagged COMMON_POLYMORPHISM "
                          "(default: 0.01).")
+    ap.add_argument("--min-depth", type=int, default=10,
+                    help="Total depth below this is flagged LOW_DEPTH [10]. "
+                         "Flagged rows leave the clinical file but stay in "
+                         "the filtered file with the reason recorded, the "
+                         "same treatment COMMON_POLYMORPHISM gets.")
+    ap.add_argument("--min-alt-count", type=int, default=3,
+                    help="Alt-supporting reads below this is flagged "
+                         "LOW_ALT_COUNT [3].")
     ap.add_argument("--aliases", default=None,
                     help="TSV of gene synonyms (alias, symbol). Optional.")
     ap.add_argument("--excluded-loci", default=None,
@@ -375,13 +407,15 @@ def main():
             sys.exit(1)
         summary_rows.append(
             filter_one_file(path, args.outdir, args.max_pop_af,
-                            args.include_ig, panel, args.keep_off_panel))
+                            args.include_ig, panel, args.keep_off_panel,
+                            min_depth=args.min_depth,
+                            min_alt_count=args.min_alt_count))
 
     os.makedirs(args.outdir, exist_ok=True)
     summary_path = os.path.join(args.outdir, "al_filter_summary.tsv")
     with open(summary_path, "w", newline="") as out:
         cols = ["sample", "input", "kept", "pass", "common_polymorphism",
-                "off_panel_reportable"]
+                "low_depth", "off_panel_reportable"]
         w = csv.DictWriter(out, fieldnames=cols, delimiter="\t", lineterminator="\n")
         w.writeheader()
         for r in summary_rows:
