@@ -6,7 +6,7 @@ AML	KMT2A_partners	12	3283999
 AML	MPN_eosinophilia_fusions	21	4473854
 AML	Ph_like_kinase_partners	2	267190
 AML	TF_programme_anchors	3	534736
-AML	fusion_anchors	13	4830963
+AML	fusion_anchors	13	6723445
 AML	named_intervals	2	320000
 AML	rare_kinase_fusions_MDS_MPN	9	2954107
 AML	rare_paediatric_anchors	26	5078427
@@ -21,7 +21,7 @@ ALL	MPN_eosinophilia_fusions	5	979981
 ALL	PAX5alt_partners	9	5222213
 ALL	Ph_like_kinase_partners	35	9500966
 ALL	TF_programme_anchors	19	2760905
-ALL	fusion_anchors	1	107518
+ALL	fusion_anchors	1	2000000
 ALL	named_intervals	9	6560000
 ALL	rare_paediatric_anchors	5	1266748
 ALL	shared_anchors_KMT2A_NUP98	3	839126

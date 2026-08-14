@@ -89,7 +89,7 @@ Y	ALL	ALL	TF_programme_anchors	TAL2	100666
 Y	ALL	ALL	TF_programme_anchors	TCF7	133530
 Y	ALL	ALL	TF_programme_anchors	TLX1	106490
 Y	ALL	ALL	TF_programme_anchors	TLX3	102892
-Y	ALL	BOTH	fusion_anchors	MYC	107518
+Y	ALL	BOTH	fusion_anchors	MYC	2000000
 Y	ALL	BOTH	named_intervals	HOXA_cluster	210000
 Y	ALL	ALL	named_intervals	IGH_locus	1350000
 Y	ALL	ALL	named_intervals	IGK_locus	1450000

@@ -16,7 +16,9 @@ Coverage rules
 --------------
 Default        : whole gene body plus FLANK either side.
 CENTERED genes : gene-body centre plus the stated half-width, for loci whose
-                 breakpoints lie outside the gene body.
+                 breakpoints lie outside the gene body. CENTERED_BY_PANEL
+                 overrides the half-width for one panel, so a SCOPE=BOTH gene
+                 can be widened on one panel while the other is mid-run.
 NAMED_REGIONS  : fixed intervals that are not a single RefSeq gene.
 """
 
@@ -34,7 +36,34 @@ CENTERED = {
     "TP53":   500000,   # del(17p) breakpoint resolution
     "MECOM": 1000000,   # inv(3)/t(3;3) breakpoints scatter over 1-2 Mb at 3q26
     "BCL11B": 500000,   # 14q32 enhancer hijacking, ~700 kb from the gene
+    "MYC":   1000000,   # 8q24 enhancer hijacking; IGH::MYC in B-ALL and
+                        # MYC x TR loci in T-ALL both break outside the gene.
+                        # A gene-body window misses them: on an MM sample with
+                        # 61 chr8 breakpoints between 126.1 and 131.9 Mb, none
+                        # fell inside the 107 kb gene-body interval. The MM v7
+                        # panel uses plus or minus 2.5 Mb; 1 Mb is the AL
+                        # compromise, matching MECOM, pending AL data.
 }
+
+# Per-panel overrides. A gene present here uses the panel's value instead of
+# the shared one. A value of None means "not centred": fall back to the normal
+# gene-body-plus-FLANK rule.
+#
+# This exists because several genes are SCOPE=BOTH, so a change to CENTERED
+# hits both panels at once. When one panel is mid-sequencing, its BED must not
+# move even though the other panel's should.
+CENTERED_BY_PANEL = {
+    # "AML": {"MYC": None},   # hold AML at the default flank while the
+    #                         # current batch is still on the instrument
+}
+
+
+def centered_halfwidth(name, panel):
+    """Half-width for a centred target, or None if it is not centred."""
+    per_panel = CENTERED_BY_PANEL.get((panel or "").strip().upper(), {})
+    if name in per_panel:
+        return per_panel[name]          # may be None, meaning not centred
+    return CENTERED.get(name)
 
 # Fixed intervals that are not single RefSeq genes.
 NAMED_REGIONS = {
@@ -130,17 +159,17 @@ def main():
             line = line.rstrip("\n")
             if not line:
                 continue
-            keep, _panel, _scope, group, name = line.split("\t")[:5]
+            keep, panel, _scope, group, name = line.split("\t")[:5]
             if keep.strip().upper() != "Y":
                 continue
             if name not in targets:
-                targets[name] = group
+                targets[name] = (group, panel)
                 order.append(name)
 
     records, missing, counts = [], [], defaultdict(int)
 
     for name in order:
-        group = targets[name]
+        group, panel = targets[name]
 
         if name in TILE_SPEC:
             chrom, start, ntile, width, spacing = TILE_SPEC[name]
@@ -163,8 +192,8 @@ def main():
             continue
 
         chrom, tx_s, tx_e = rg[name]
-        if name in CENTERED:
-            hw = CENTERED[name]
+        hw = centered_halfwidth(name, panel)
+        if hw is not None:
             mid = (tx_s + tx_e) // 2
             s, e = clip(mid - hw, mid + hw, chrom, sizes)
         else:

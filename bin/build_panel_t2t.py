@@ -127,6 +127,34 @@ def chrom_key(c: str) -> Tuple[int, object]:
 # -----------------------------------------------------------------------------
 # Inputs
 # -----------------------------------------------------------------------------
+def load_centered(builder: Optional[Path]):
+    """Import CENTERED and its panel-aware resolver from build_panel.py.
+
+    The coverage rules live in one place. Importing them rather than
+    duplicating them is what stops the two references disagreeing: a gene given
+    a centred window on hg38 must get the same window on T2T, or the panel says
+    two different things depending on which BED you read.
+
+    Returns a callable (name, panel) -> half-width or None. If build_panel.py
+    cannot be found, returns a resolver that always says "not centred", so this
+    degrades to the previous flat-flank behaviour rather than failing.
+    """
+    import importlib.util
+    if not builder or not builder.exists():
+        sys.stderr.write(
+            f"WARNING: {builder} not found; no centred windows will be applied. "
+            f"Any gene with a CENTERED entry will be built at the flat "
+            f"--flank instead, and will disagree with the hg38 BED.\n")
+        return lambda name, panel: None
+    spec = importlib.util.spec_from_file_location("build_panel", builder)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if hasattr(mod, "centered_halfwidth"):
+        return mod.centered_halfwidth
+    centered = getattr(mod, "CENTERED", {})
+    return lambda name, panel: centered.get(name)
+
+
 def load_targets(path: Path) -> List[Tuple[str, str]]:
     """(gene_or_region, group) for KEEP == Y rows, first nomination wins."""
     out, seen = [], set()
@@ -289,6 +317,9 @@ def main() -> int:
                     help="BED of coordinates for targets that are neither in "
                          "--prev-bed nor resolvable from the GFF, i.e. newly "
                          "added named intervals.")
+    ap.add_argument("--builder", type=Path, default=None,
+                    help="Path to build_panel.py, whose CENTERED table supplies "
+                         "centred-window half-widths [alongside this script].")
     ap.add_argument("--rederive", default="",
                     help="Comma-separated labels to rebuild from the GFF even "
                          "if present in --prev-bed.")
@@ -308,19 +339,65 @@ def main() -> int:
     extra = load_bed(args.extra_regions, "extra") if args.extra_regions else []
     rederive = {s.strip().upper() for s in args.rederive.split(",") if s.strip()}
 
-    # Which targets does the previous BED already cover? Compound labels mean
-    # a token index rather than a name lookup.
-    prev_tokens: Dict[str, Region] = {}
+    # Which targets does the previous BED already cover?
+    #
+    # Matching is by EXACT label first, then by token. Exact-first matters
+    # because labels can share every token and still be different regions:
+    # PAR1_CRLF2_P2RY8 on chrX and PAR1_CRLF2_P2RY8_Y on chrY differ only by
+    # the "Y". A token index maps PAR1, CRLF2 and P2RY8 to whichever of the two
+    # is read second, so the other is claimed by nothing and silently dropped
+    # from the rebuild. Token matching is still needed for compound labels a
+    # previous merge produced ("TAL1/STIL"), so it is kept as a fallback and
+    # only consulted when no exact label matches.
+    ambiguous: List[str] = []
+    prev_exact: Dict[str, Region] = {}
+    prev_tokens: Dict[str, List[Region]] = defaultdict(list)
     for r in prev:
-        for t in tokens(r.name):
-            prev_tokens[t] = r
+        prev_exact.setdefault(r.name.upper(), r)
+        for tk in tokens(r.name):
+            prev_tokens[tk].append(r)
+
+    def find_prev(name: str) -> Optional[Region]:
+        hit = prev_exact.get(name.upper())
+        if hit is not None:
+            return hit
+        # Token fallback, for compound labels a previous merge produced.
+        cands = []
+        for tk in tokens(name):
+            for r in prev_tokens.get(tk, []):
+                if r not in cands:
+                    cands.append(r)
+        if len(cands) == 1:
+            return cands[0]
+        if len(cands) > 1:
+            # Prefer a region whose label is exactly this target plus merge
+            # partners, i.e. one of its "/"-separated components is the target
+            # verbatim. That resolves PAR1_CRLF2_P2RY8 to
+            # "PAR1_CRLF2_P2RY8/CRLF2" rather than to the chrY region, which
+            # merely shares tokens.
+            want = name.upper()
+            component = [r for r in cands
+                         if want in [c.strip().upper()
+                                     for c in r.name.split("/")]]
+            if len(component) == 1:
+                return component[0]
+            # Otherwise prefer the candidate whose full token set is the
+            # closest superset; an exact token-set equality wins outright.
+            exact_set = [r for r in cands if tokens(r.name) == tokens(name)]
+            if len(exact_set) == 1:
+                return exact_set[0]
+            ambiguous.append(
+                f"{name} -> {', '.join(sorted(c.name for c in cands))}")
+        return None
 
     carried, to_derive, unresolved = [], [], []
     seen_prev: set = set()
     for name, _group in targets:
-        tk = tokens(name)
-        hit = next((prev_tokens[t] for t in tk if t in prev_tokens), None)
-        if hit and not (tk & rederive):
+        if tokens(name) & rederive:
+            to_derive.append(name)
+            continue
+        hit = find_prev(name)
+        if hit is not None:
             if id(hit) not in seen_prev:
                 seen_prev.add(id(hit))
                 carried.append(hit)
@@ -343,16 +420,30 @@ def main() -> int:
             if t in aliases:
                 wanted.add(aliases[t])
     coords = parse_gff(args.gff, wanted) if wanted else {}
+    centered = load_centered(args.builder or (Path(__file__).parent / "build_panel.py"))
 
-    extra_tokens = {}
+    extra_exact = {r.name.upper(): r for r in extra}
+    extra_tokens: Dict[str, List[Region]] = defaultdict(list)
     for r in extra:
-        for t in tokens(r.name):
-            extra_tokens[t] = r
+        for tk in tokens(r.name):
+            extra_tokens[tk].append(r)
+
+    def find_extra(name: str) -> Optional[Region]:
+        hit = extra_exact.get(name.upper())
+        if hit is not None:
+            return hit
+        cands = []
+        for tk in tokens(name):
+            for r in extra_tokens.get(tk, []):
+                if r not in cands:
+                    cands.append(r)
+        return cands[0] if len(cands) == 1 else None
 
     derived: List[Region] = []
+    centred_note: List[str] = []
     for name in to_derive:
         tk = tokens(name)
-        hit = next((extra_tokens[t] for t in tk if t in extra_tokens), None)
+        hit = find_extra(name)
         if hit:
             derived.append(Region(hit.chrom, hit.start, hit.end, name, "extra"))
             continue
@@ -364,7 +455,16 @@ def main() -> int:
         if not gc:
             unresolved.append(name)
             continue
-        s, e = clip(gc.start - args.flank, gc.end + args.flank, gc.chrom, sizes)
+        hw = centered(name, args.panel)
+        if hw is not None:
+            # Centred on the gene-body midpoint, matching build_panel.py, so
+            # the same locus gets the same width on both references.
+            mid = (gc.start + gc.end) // 2
+            s, e = clip(mid - hw, mid + hw, gc.chrom, sizes)
+            centred_note.append(f"{name} (+/- {hw:,})")
+        else:
+            s, e = clip(gc.start - args.flank, gc.end + args.flank,
+                        gc.chrom, sizes)
         derived.append(Region(gc.chrom, s, e, name, "derived"))
 
     final = merge_overlaps(carried + derived)
@@ -387,10 +487,19 @@ def main() -> int:
     w(f"carried forward  : {len(carried)}\n")
     w(f"derived from GFF : {len([r for r in derived if r.origin == 'derived'])}\n")
     w(f"from extra BED   : {len([r for r in derived if r.origin == 'extra'])}\n")
+    if centred_note:
+        w(f"centred windows  : {', '.join(centred_note)}\n")
     w(f"regions emitted  : {len(final)}\n")
     w(f"total bases      : {total:,} ({100 * total / genome:.3f}% of T2T primary)\n")
     w(f"written          : {chr_path}\n                   {nc_path}\n")
 
+    if ambiguous:
+        w(f"\nAMBIGUOUS ({len(ambiguous)}): target matched more than one region "
+          f"by token and none exactly, so it was not carried forward.\n")
+        for a in ambiguous:
+            w(f"  {a}\n")
+        w("  Give the target a label matching its region exactly, or supply "
+          "the interval via --extra-regions.\n")
     if dropped:
         w(f"\ndropped from the previous BED, no longer in the target table "
           f"({len(dropped)}):\n  " + ", ".join(sorted(r.name for r in dropped)) + "\n")
