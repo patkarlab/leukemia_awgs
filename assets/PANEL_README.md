@@ -4,11 +4,13 @@ Two adaptive-sampling panels, selected per sample via `meta.panel`.
 
 | | AML | ALL |
 |---|---|---|
-| Design targets | 120 | 135 |
-| T2T regions / bases | 117 / 29.94 Mb | 128 / 41.47 Mb |
-| hg38 regions / bases | 117 / 29.43 Mb | 128 / 38.73 Mb |
-| Fraction of T2T-CHM13v2.0 | 0.960% | 1.330% |
-| Shared region labels | 56 | 56 |
+| Design targets | 120 | 136 |
+| T2T regions / bases | 117 / 29.94 Mb | 128 / 40.66 Mb |
+| hg38 regions / bases | 117 / 29.43 Mb | 128 / 38.70 Mb |
+| Fraction of T2T-CHM13v2.0 | 0.960% | 1.304% |
+
+Both panels report full consistency across all four of their descriptions
+(`bin/check_panel_consistency.py --panel <PANEL> --dictionary`).
 
 The ALL panel was revised after its T2T BEDs were first built: sixteen
 MPN/eosinophilia partner genes were dropped, keeping the five kinases
@@ -121,33 +123,93 @@ criterion is copy number of the RUNX1 region specifically. RUNX1 is on both
 panels, so per-region on-target depth from `QC_ONTARGET` is a better starting
 point than the genome-wide CNV track. This is not yet automated.
 
-## Pending design changes
+## Change log
 
-### ALL: CDKN2A and CDKN2B added to the design table, not yet built
+### CDKN2A and CDKN2B added to the ALL panel
 
-Added under `ELN_risk_and_comutation`, `SCOPE=ALL`. 9p21 deletion occurs in
-roughly 70% of T-ALL and 30% of B-ALL, making it one of the commonest lesions
-in the disease, and it is the fourth term of the IKZF1plus classifier
-alongside IKZF1, PAX5 and PAR1, all three of which were already on the panel.
+9p21 deletion occurs in roughly 70% of T-ALL and 30% of B-ALL, making it one
+of the commonest lesions in the disease, and it is the fourth term of the
+IKZF1plus classifier alongside IKZF1, PAX5 and PAR1, all three of which were
+already on the panel.
 
-The two genes lie about 8 kb apart, so at the default flank they merge into a
-single region labelled `CDKN2A/CDKN2B` of roughly 140 kb, standalone on chr9
-between MLLT3 at 20.7 Mb and PAX5 at 36.8 Mb. The default flank is deliberate:
-it supports deletion detection by depth, which is what the clinical call
-needs, rather than breakpoint mapping, which would not resolve at this panel's
+The two genes lie about 8 kb apart and merge at the default flank into one
+region of roughly 141.6 kb: `chr9:21,917,751-22,059,313` in hg38 and
+`chr9:21,932,051-22,073,690` in T2T. The ~14 kb offset between them is the
+genuine assembly difference at 9p21. The default flank is deliberate; it
+supports deletion detection by depth, which is what the clinical call needs,
+rather than breakpoint mapping, which would not resolve at this panel's
 on-target depth.
 
-The `BASES` column on both rows is a placeholder of 0 until the rebuild.
-`build_panel.py` reads only the first five columns of the target table, so it
-ignores that field, and reports true per-group totals on stderr.
+### RANBP2 removed from the ALL panel
 
-Rebuild required: `ALL_panel_hg38.bed` via `build_panel.py`, then the T2T BEDs
-by the usual process.
+T2T RefSeq annotates RANBP2 as a single 1,123,905 bp gene model spanning the
+2q13 RGPD paralogue cluster, against roughly 66 kb in hg38. This was verified
+as a real annotation rather than a liftover artefact: the GFF holds one gene
+entry at that span, so re-deriving returns the same result.
 
-### AML: 17p / TP53 window deferred
+Keeping it cost 1.22 Mb of adaptive-sampling target, 2.9% of the ALL panel,
+across segmental duplication where reads are multi-mapping and discarded by
+anything filtering on MAPQ. The capacity was spent on reads most of the
+pipeline throws away.
 
-TP53 currently receives a centred window of plus or minus 500 kb. Widening it
-was considered and deferred pending review of data from the batch currently
-sequencing. Note when revisiting that `CENTERED` in `build_panel.py` is shared
-across both panels and TP53 is `SCOPE=BOTH`, so changing its half-width widens
-TP53 on the ALL panel too unless `CENTERED` is made panel-aware first.
+`RANBP2::ABL1` detection is unaffected. ABL1 is on the panel and is a
+promiscuous anchor, so any ABL1 junction is reportable whatever the partner,
+and the dictionary row carries `partner_b_band=2q13` so the entity is still
+named from the ABL1 side. What is lost is breakpoint resolution on the RANBP2
+side.
+
+This is a general hazard rather than a RANBP2 one. Any gene sitting in a
+T2T-assembled segmental duplication may carry a similarly inflated model. The
+`--hg38-bed` span comparison in `build_panel_t2t.py` is what surfaces them;
+`ZNF362` at 1.91x is the remaining candidate on the ALL panel.
+
+### chrY PAR1 window corrected on the ALL T2T panel
+
+The design specifies `PAR1_CRLF2_P2RY8_Y` as a 500 kb interval and the hg38
+BED carried it, but the T2T BEDs held a 175 kb P2RY8 gene-body region instead.
+Because adaptive sampling runs against T2T, that 325 kb was never enriched:
+P2RY8::CRLF2 arises from an interstitial PAR1 deletion whose breakpoints are
+distributed across PAR1, so breakpoints outside the P2RY8 gene body were
+absent from the data rather than merely unreported. Samples sequenced against
+the previous NC_ BED cannot be recovered by reanalysis.
+
+Replaced with `chrY:1,000,430-1,451,516`, 451,086 bp, spanning CRLF2 (start
+1,050,430) to P2RY8 (end 1,401,516) in T2T coordinates plus 50 kb margin,
+supplied through `assets/extra_regions_ALL_t2t.bed`.
+
+## Known limitations
+
+**`build_panel_t2t.py` matches labels by token, not exactly.** The X-side
+`PAR1_CRLF2_P2RY8` and the Y-side `PAR1_CRLF2_P2RY8_Y` share every token but
+`Y`, so they collide and the emitted chrY label needed manual correction. A
+rebuild of the ALL panel will reproduce that and needs the same repair until
+named intervals are matched exactly. Token matching is correct for compound
+labels like `TAL1/STIL` and wrong for X/Y paralogous intervals.
+
+**Two spans still exceed their hg38 counterparts.** `ZNF362` at 1.91x is
+unexplained and worth checking against the T2T annotation the way RANBP2 was.
+`IGK_locus` at 1.60x and the X-side PAR1 interval at 1.80x are expected: the
+Ig loci are genuinely larger and fully assembled in T2T, where the hg38
+`NAMED_REGIONS` entries are fixed windows that may under-cover.
+
+**AML 17p / TP53 window deferred.** TP53 currently receives a centred window
+of plus or minus 500 kb. Widening it was considered and deferred pending
+review of data from the batch currently sequencing. Note when revisiting that
+`CENTERED` in `build_panel.py` is shared across both panels and TP53 is
+`SCOPE=BOTH`, so changing its half-width widens TP53 on the ALL panel too
+unless `CENTERED` is made panel-aware first.
+
+## Regenerating the derived records
+
+`BASES` in the target tables and `panel_summary.tsv` are computed, not
+authored. After any panel change:
+
+    python3 bin/update_panel_records.py \
+        --assets  assets \
+        --refgene <path>/refGene.txt.gz \
+        --sizes   <path>/hg38.chrom.sizes
+
+`BASES` is the per-target span before merging, matching what `build_panel.py`
+accumulates. It is not the sum of the emitted BED regions: overlapping targets
+merge into one region whose span is smaller than the individual spans added
+together.
