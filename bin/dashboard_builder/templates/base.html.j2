@@ -1,0 +1,33 @@
+{# base.html.j2 — common HTML shell.
+
+   All pages in a run reference the run-level assets/ directory via {{ assets_prefix }}.
+   - cohort_index.html: assets_prefix = "assets"
+   - sample reports:    assets_prefix = "../assets"
+#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Targeted-Seq Dashboard{% endblock %}</title>
+<link rel="stylesheet" href="{{ assets_prefix }}/css/bootstrap.min.css">
+<link rel="stylesheet" href="{{ assets_prefix }}/css/dataTables.bootstrap5.min.css">
+<link rel="stylesheet" href="{{ assets_prefix }}/css/buttons.bootstrap5.min.css">
+<link rel="stylesheet" href="{{ assets_prefix }}/css/dashboard.css">
+{% block head_extra %}{% endblock %}
+</head>
+<body>
+{% block body %}{% endblock %}
+
+<script src="{{ assets_prefix }}/js/jquery.min.js"></script>
+<script src="{{ assets_prefix }}/js/bootstrap.bundle.min.js"></script>
+<script src="{{ assets_prefix }}/js/dataTables.min.js"></script>
+<script src="{{ assets_prefix }}/js/dataTables.bootstrap5.min.js"></script>
+<script src="{{ assets_prefix }}/js/dataTables.buttons.min.js"></script>
+<script src="{{ assets_prefix }}/js/buttons.bootstrap5.min.js"></script>
+<script src="{{ assets_prefix }}/js/buttons.colVis.min.js"></script>
+<script src="{{ assets_prefix }}/js/chart.umd.min.js"></script>
+<script src="{{ assets_prefix }}/js/variant-browser.js"></script>
+{% block body_scripts %}{% endblock %}
+</body>
+</html>

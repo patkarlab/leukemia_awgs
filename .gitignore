@@ -12,3 +12,6 @@ results_titration/
 samples_*.csv
 run_*.log
 sequences/
+report_*/
+report_*.zip
+*_bundle/

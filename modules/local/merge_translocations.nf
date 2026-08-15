@@ -3,7 +3,7 @@ process MERGE_TRANSLOCATIONS {
     label 'process_low'
     conda params.conda_awgs_sv
 
-    publishDir "${params.outdir}/t2t/calls/mm_annotated", mode: 'copy', pattern: "*.translocations.tsv"
+    publishDir "${params.outdir}/t2t/calls/leukemia_annotated", mode: 'copy', pattern: "*.translocations.tsv"
 
     input:
     tuple val(meta), path(annotated)

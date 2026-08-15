@@ -1,0 +1,59 @@
+{% extends "base.html.j2" %}
+
+{% block title %}Run {{ ctx.run_name }} — Cohort Index{% endblock %}
+
+{% block body %}
+<div class="container-fluid py-3 px-4">
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <div>
+      <h3 class="mb-0">Run {{ ctx.run_name }}</h3>
+      <div class="text-muted small">{{ ctx.samples | length }} sample(s) &middot; generated {{ ctx.build_time }}</div>
+    </div>
+    <span class="badge bg-secondary fs-6">Targeted-Seq Pipeline</span>
+  </div>
+
+  <div class="table-responsive">
+    <table id="cohort-table" class="table table-sm table-striped table-hover w-100">
+      <thead>
+        <tr>
+          <th>Sample</th>
+          <th>Median depth</th>
+          <th>Regions &lt;10x</th>
+          <th>Rearrangements</th>
+          <th># clinical variants</th>
+          <th>QC</th>
+          <th>Report</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in ctx.samples %}
+          {% set m = s.hsmetrics.metrics if s.hsmetrics else {} %}
+          {% set csum = s.coverage.summary if s.coverage and s.coverage.summary else None %}
+          <tr>
+            <td><a href="./{{ s.sample }}/{{ ctx.report_subdir }}{{ s.sample }}_report.html">{{ s.sample }}</a></td>
+            <td>{{ "%.1f"|format(s.qc.depth.median) ~ "x" if s.qc and s.qc.depth else '' }}</td>
+            <td>{{ s.qc.depth.n_below_10 if s.qc and s.qc.depth else '' }}</td>
+            <td>{{ s.translocations.n_translocations if s.translocations and s.translocations.found else '' }}</td>
+            <td>{{ s.clinical.n if s.clinical else '' }}</td>
+            <td><span class="badge qc-pill-pending">Pending</span></td>
+            <td><a href="./{{ s.sample }}/{{ ctx.report_subdir }}{{ s.sample }}_report.html" class="btn btn-sm btn-outline-primary">Open &rarr;</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_scripts %}
+<script>
+  $(document).ready(function () {
+    $('#cohort-table').DataTable({
+      pageLength: 50,
+      order: [[0, 'asc']],
+      dom: 'Bfrtip',
+      buttons: [{ extend: 'colvis', text: 'Columns', className: 'btn-sm btn-outline-secondary' }]
+    });
+  });
+</script>
+{% endblock %}

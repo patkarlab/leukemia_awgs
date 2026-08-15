@@ -2,7 +2,7 @@
 """
 merge_translocations.py
 
-Collapse duplicate translocation (TRA) calls in an mm_annotated.tsv where the
+Collapse duplicate translocation (TRA) calls in an leukemia_annotated.tsv where the
 same junction is reported multiple times - as reciprocal mates (Severus _1/_2
 with A/B swapped) or as near-identical calls from different callers a few bp
 apart. Two TRA rows are united when, after orientation normalisation, they share
@@ -38,7 +38,7 @@ Single-linkage clustering (transitive) is used; clusters stay small so chaining
 is not a concern.
 
 Usage:
-  python3 merge_translocations.py --input <sample>.mm_annotated.tsv [...] \
+  python3 merge_translocations.py --input <sample>.leukemia_annotated.tsv [...] \
       [--outdir DIR] [--max-dist 100] [--ig-partner-tol 1000] [--keep-all-sv]
 """
 
@@ -46,6 +46,7 @@ Usage:
 import argparse
 import csv
 import os
+import re
 import sys
 
 CALLER_ORDER = {"Sniffles": 0, "CuteSV": 1, "Severus": 2, "nanomonsv": 3}
@@ -136,8 +137,24 @@ def first_nonempty(members, col):
     return ""
 
 
+def _named_ends(m):
+    """Count ends that landed on a named panel region. A cytoband is a
+    position, not a gene."""
+    n = 0
+    for col in ("gene_a", "gene_b"):
+        g = (m.get(col) or "").strip()
+        if g and not re.match(r"^[0-9XY]+[pq]\d", g):
+            n += 1
+    return n
+
+
 def _rep_key(m):
-    return (to_int(m.get("n_callers"), 0), to_int(m.get("support_reads"), 0))
+    # Named ends and a dictionary hit outrank support: the representative
+    # supplies the row's gene names and entity, so choosing on support alone
+    # can collapse a named finding into an anonymous junction.
+    named = 1 if (m.get("known_mm_pair") or m.get("known_pair") or "").strip() else 0
+    return (_named_ends(m), named,
+            to_int(m.get("n_callers"), 0), to_int(m.get("support_reads"), 0))
 
 
 def merge_cluster(members):
@@ -221,6 +238,98 @@ def cluster_tra(tra_rows, max_dist):
     return clusters
 
 
+def arm_of(band, fallback_chrom):
+    """Chromosome arm as 'chr6p', parsed from the cytoband alone.
+
+    The band names its own chromosome, so it must not be combined with a
+    chromosome taken from elsewhere: canonical_ends sorts a junction's ends by
+    chromosome, which swaps them relative to band_a/band_b on a reciprocal
+    mate. Falls back to the bare chromosome when no band is available, which
+    only loosens grouping.
+    """
+    m = re.match(r"^([0-9]+|[XY])([pq])", (band or "").strip())
+    return f"chr{m.group(1)}{m.group(2)}" if m else str(fallback_chrom)
+
+
+def arm_pair_union(clusters, max_spread):
+    """Group junctions joining the same two chromosome arms into one event.
+
+    Positional clustering asks whether two calls are the same breakpoint. This
+    asks whether they are the same rearrangement, which is what a report needs.
+    Imperfect double-strand break repair leaves a single translocation with
+    several junctions tens of kilobases apart, beyond any breakpoint tolerance.
+
+    Rule: cluster translocations sharing common arms at both ends (LINX,
+    Hartwig, bioRxiv 2020.12.03.410860). Bound: 100 kb, after Malhotra et al.,
+    Genome Res 2013;23:762. Disease- and panel-agnostic; arms need no gene
+    annotation, so a breakend resolving to a cytoband groups as readily as one
+    on a named gene.
+    """
+    by_arms = {}
+    out = {}
+    for key, members in clusters.items():
+        arms = set()
+        for m in members:
+            e1, e2 = m["_ends"]
+            # Bands are read from the row, chromosomes from the sorted ends
+            # only as a fallback. A reciprocal mate carries the same two bands
+            # in the opposite order, so the set is identical either way.
+            arms.add(arm_of(m.get("band_a"), e1[0]))
+            arms.add(arm_of(m.get("band_b"), e2[0]))
+        if len(arms) != 2:
+            # Not a clean two-arm junction: intrachromosomal, or already a
+            # multi-arm cluster. Leave it as the earlier passes resolved it.
+            out[key] = members
+            continue
+        by_arms.setdefault(tuple(sorted(arms)), []).append((key, members))
+
+    for arms, group in by_arms.items():
+        if len(group) == 1:
+            k, m = group[0]
+            out[k] = m
+            continue
+
+        # Single-linkage rather than one span across the group, so an
+        # unrelated junction between the same arms cannot inflate the span and
+        # block a real merge.
+        reps = []
+        for k, ms in group:
+            reps.append((k, ms,
+                         min(m["_ends"][0][1] for m in ms),
+                         min(m["_ends"][1][1] for m in ms)))
+        n = len(reps)
+        parent = list(range(n))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                if abs(reps[i][2] - reps[j][2]) <= max_spread and \
+                   abs(reps[i][3] - reps[j][3]) <= max_spread:
+                    parent[find(i)] = find(j)
+
+        linked = {}
+        for i in range(n):
+            linked.setdefault(find(i), []).append(i)
+
+        for idxs in linked.values():
+            members = [m for i in idxs for m in reps[i][1]]
+            key = reps[idxs[0]][0]
+            out[key] = members
+            if len(idxs) > 1:
+                pa = [m["_ends"][0][1] for m in members]
+                pb = [m["_ends"][1][1] for m in members]
+                sys.stderr.write(
+                    f"  arm-pair merge: {arms[0]}::{arms[1]}  "
+                    f"{len(idxs)} clusters -> 1 event, {len(members)} junction(s), "
+                    f"breakpoint spread {max(pa)-min(pa):,} / {max(pb)-min(pb):,} bp\n")
+    return out
+
+
 def ig_aware_union(clusters, ig_partner_tol):
     """Second pass over positional clusters: collapse partner::anchor translocations
     whose anchor-side breakpoints are scattered across a dispersed anchor (Ig
@@ -279,12 +388,13 @@ def ig_aware_union(clusters, ig_partner_tol):
     return merged
 
 
-def process_file(path, outdir, max_dist, keep_all_sv, ig_partner_tol):
+def process_file(path, outdir, max_dist, keep_all_sv, ig_partner_tol,
+                 event_max_spread=100000):
     stem = os.path.basename(path)
     # default: translocations-only file; --keep-all-sv: full table w/ TRA merged
     suffix = ".sv_tra_merged.tsv" if keep_all_sv else ".translocations.tsv"
     base = stem
-    for s_ in (".mm_annotated.tsv", "_mm_annotated.tsv", ".tsv"):
+    for s_ in (".leukemia_annotated.tsv", "_leukemia_annotated.tsv", ".tsv"):
         if base.endswith(s_):
             base = base[: -len(s_)]
             break
@@ -309,6 +419,7 @@ def process_file(path, outdir, max_dist, keep_all_sv, ig_partner_tol):
     tra_rows = [rows[i] for i in tra_idx]
     clusters = cluster_tra(tra_rows, max_dist)
     clusters = ig_aware_union(clusters, ig_partner_tol)
+    clusters = arm_pair_union(clusters, event_max_spread)
 
     # Map each TRA row's original position -> its cluster's representative output,
     # emitted once at the earliest member position.
@@ -352,10 +463,16 @@ def process_file(path, outdir, max_dist, keep_all_sv, ig_partner_tol):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Unite near-identical translocation calls in mm_annotated.tsv.")
-    ap.add_argument("-i", "--input", required=True, nargs="+", help="One or more *.mm_annotated.tsv files.")
+    ap = argparse.ArgumentParser(description="Unite near-identical translocation calls in leukemia_annotated.tsv.")
+    ap.add_argument("-i", "--input", required=True, nargs="+", help="One or more *.leukemia_annotated.tsv files.")
     ap.add_argument("-o", "--outdir", default=None, help="Output dir (default: alongside each input).")
     ap.add_argument("--max-dist", type=int, default=100, help="Max bp between breakpoints to unite non-Ig pairs (default 100).")
+    ap.add_argument("--event-max-spread", type=int, default=100000,
+                    help="Collapse junctions joining the same two chromosome "
+                         "arms into one event when their breakpoints span no "
+                         "more than this on both sides [100000]. LINX's "
+                         "shared-arms rule with the 100 kb bound from Malhotra "
+                         "et al., Genome Res 2013. Set to 0 to disable.")
     ap.add_argument("--ig-partner-tol", type=int, default=2000,
                     help="bp tolerance on the partner side when collapsing partner::Ig "
                          "translocations across the Ig locus (default 1000).")

@@ -1,0 +1,217 @@
+{#
+  baf_loh_enhance.html.j2
+
+  Progressive enhancement for the BAF/LOH tab, applied to the rendered table
+  rather than to the template that produces it. Nothing here depends on the
+  markup that pane emits, so it survives changes to it.
+
+  Three problems it addresses:
+
+  1. cn_note repeats the same long explanation on every row, so each row grows
+     to several lines and the numeric columns become unreadable. The note is
+     the same text for every region when the ichorCNA fit is unreliable, so it
+     is collapsed to one line, expandable per row, and surfaced once as a
+     banner when it is identical throughout.
+
+  2. The flag column is the one people actually triage on. It gets a button
+     filter built from the values present, with counts.
+
+  3. Figures gain an include-in-report control, but only when the reporting
+     API is present. Feature-detected rather than assumed.
+
+  Include at the end of baf_loh_tab.html.j2, inside its tab-pane div.
+#}
+<style>
+  .baf-note-cell        { max-width: 26ch; cursor: pointer; }
+  .baf-note-cell .short { display: inline; }
+  .baf-note-cell .full  { display: none; }
+  .baf-note-cell.open .short { display: none; }
+  .baf-note-cell.open .full  { display: inline; }
+  .baf-note-cell:after  { content: " \25BE"; color: #6c757d; font-size: .75em; }
+  .baf-note-cell.open:after { content: " \25B4"; }
+  .baf-flagbar          { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+  .baf-flagbar .btn     { font-size: .8rem; padding: .15rem .6rem; }
+  .baf-figure-card      { position: relative; }
+</style>
+
+<script>
+(function () {
+  "use strict";
+  if (window.__bafEnhanceInit) { return; }
+  window.__bafEnhanceInit = true;
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function headerIndex(table, name) {
+    var cells = table.querySelectorAll("thead th");
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i].textContent.trim().toLowerCase() === name) { return i; }
+    }
+    return -1;
+  }
+
+  function bodyRows(table) {
+    return Array.prototype.slice.call(table.querySelectorAll("tbody tr"));
+  }
+
+  // --- 1. cn_note ---------------------------------------------------------
+  function collapseNotes(table, pane) {
+    var idx = headerIndex(table, "cn_note");
+    if (idx === -1) { return; }
+
+    var rows = bodyRows(table);
+    var seen = {};
+    var distinct = 0;
+    var sample = "";
+
+    rows.forEach(function (tr) {
+      var td = tr.children[idx];
+      if (!td) { return; }
+      var full = td.textContent.trim();
+      if (!full) { return; }
+      if (!seen[full]) { seen[full] = 0; distinct += 1; sample = full; }
+      seen[full] += 1;
+      if (full.length < 60) { return; }
+      td.classList.add("baf-note-cell");
+      td.innerHTML =
+        '<span class="short">' + escapeHtml(full.slice(0, 52)) + "\u2026</span>" +
+        '<span class="full">' + escapeHtml(full) + "</span>";
+      td.setAttribute("title", full);
+      td.addEventListener("click", function () { td.classList.toggle("open"); });
+    });
+
+    // When every row carries the same note it is a property of the fit, not
+    // of the regions, and belongs above the table once rather than in every
+    // row. The per-row cells stay, collapsed, so nothing is hidden outright.
+    if (distinct === 1 && rows.length > 1 && sample.length > 60) {
+      var banner = document.createElement("div");
+      banner.className = "alert alert-warning py-2 small mb-2";
+      banner.innerHTML =
+        "<strong>Same copy-number note on all " + rows.length + " regions:</strong> " +
+        escapeHtml(sample);
+      table.parentNode.insertBefore(banner, table);
+    }
+  }
+
+  // --- 2. flag filter -----------------------------------------------------
+  function buildFlagFilter(table, pane) {
+    var idx = headerIndex(table, "flag");
+    if (idx === -1) { return; }
+
+    var rows = bodyRows(table);
+    var counts = {};
+    rows.forEach(function (tr) {
+      var td = tr.children[idx];
+      var value = td ? td.textContent.trim() : "";
+      if (!value) { value = "(blank)"; }
+      counts[value] = (counts[value] || 0) + 1;
+    });
+    var values = Object.keys(counts).sort();
+    if (values.length < 2) { return; }
+
+    var bar = document.createElement("div");
+    bar.className = "baf-flagbar mb-2";
+    bar.innerHTML = '<span class="text-muted small me-1">Flag:</span>';
+
+    var isDataTable = window.jQuery && jQuery.fn.DataTable &&
+                      jQuery.fn.DataTable.isDataTable(table);
+    var api = isDataTable ? jQuery(table).DataTable() : null;
+
+    function apply(value, button) {
+      Array.prototype.forEach.call(
+        bar.querySelectorAll("button"),
+        function (b) { b.className = "btn btn-outline-secondary"; }
+      );
+      button.className = "btn btn-primary";
+
+      if (api) {
+        // Anchored so LOH_LIKELY does not also match a longer value.
+        api.column(idx).search(value === null ? "" : "^" + value + "$", true, false).draw();
+        return;
+      }
+      rows.forEach(function (tr) {
+        var td = tr.children[idx];
+        var cell = td ? td.textContent.trim() : "";
+        if (!cell) { cell = "(blank)"; }
+        tr.style.display = (value === null || cell === value) ? "" : "none";
+      });
+    }
+
+    function addButton(label, value) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-outline-secondary";
+      button.textContent = label;
+      button.addEventListener("click", function () { apply(value, button); });
+      bar.appendChild(button);
+      return button;
+    }
+
+    var allButton = addButton("All (" + rows.length + ")", null);
+    values.forEach(function (value) {
+      addButton(value + " (" + counts[value] + ")", value);
+    });
+    allButton.className = "btn btn-primary";
+
+    table.parentNode.insertBefore(bar, table);
+  }
+
+  // --- 3. figure selection ------------------------------------------------
+  function addFigureControls(pane) {
+    var reporting = window.tspipeReporting;
+    if (!reporting || typeof reporting.setDecision !== "function") { return; }
+
+    var images = pane.querySelectorAll("img");
+    Array.prototype.forEach.call(images, function (img, i) {
+      var src = img.getAttribute("src") || "";
+      var key = "baf_loh::" + (img.getAttribute("alt") || ("figure_" + i));
+      if (src.indexOf("data:") === 0 && img.getAttribute("alt")) {
+        key = "baf_loh::" + img.getAttribute("alt");
+      }
+
+      var wrap = document.createElement("div");
+      wrap.className = "form-check form-check-inline small mt-1";
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.className = "form-check-input";
+      box.id = "baf-fig-" + i;
+      var label = document.createElement("label");
+      label.className = "form-check-label";
+      label.setAttribute("for", box.id);
+      label.textContent = "Include in report";
+
+      try {
+        box.checked = reporting.getDecision("figure", key) === "include";
+      } catch (e) { /* no prior decision */ }
+
+      box.addEventListener("change", function () {
+        reporting.setDecision("figure", key, box.checked ? "include" : "");
+      });
+
+      wrap.appendChild(box);
+      wrap.appendChild(label);
+      if (img.parentNode) { img.parentNode.appendChild(wrap); }
+    });
+  }
+
+  function enhance() {
+    var pane = document.getElementById("tab-bafloh");
+    if (!pane) { return; }
+    Array.prototype.forEach.call(pane.querySelectorAll("table"), function (table) {
+      collapseNotes(table, pane);
+      buildFlagFilter(table, pane);
+    });
+    addFigureControls(pane);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", enhance);
+  } else {
+    enhance();
+  }
+})();
+</script>

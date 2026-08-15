@@ -1,0 +1,144 @@
+{#
+  ichor_tab.html.j2
+
+  Copy-number tab. Shows the ichorCNA genome-wide figure and the fitted
+  parameters. There is deliberately no segment call table: large-scale copy
+  number on adaptive-sampling data is read off the plot, and the per-bin
+  segment file is an intermediate rather than a reporting artefact.
+
+  Context required:
+    ichor   - output of parsers/ichor.py (or None)
+    sample  - sequencing identifier
+
+  Include inside the tab-content container of sample_report.html.j2.
+#}
+{# 
+  Resolves its context under either convention. This builder passes the
+  per-sample context as a single `ctx` object, so a bare variable name is
+  undefined and every guard falls through to the empty state. Checking both
+  means the include works whichever way build.py renders it.
+#}
+{% set ichor = ichor if (ichor is defined and ichor) else ((ctx.ichor if ctx is defined else none) or none) %}
+{% set sample = sample if (sample is defined and sample) else ((ctx.sample if ctx is defined else none) or '') %}
+<div class="tab-pane fade" id="tab-cnv" role="tabpanel">
+
+  {% if not ichor %}
+    <div class="alert alert-danger mt-3">
+      <strong>Context not supplied.</strong>
+      The builder did not pass <code>ichor</code> into this template,
+      under either <code>ichor</code> or <code>ctx.ichor</code>.
+      Either the parser never ran, or its result is not reaching the render
+      call. Check that <code>build.py</code> assigns
+      <code>ctx["ichor"]</code> and that render() passes it through.
+    </div>
+  {% elif not ichor.found %}
+    <div class="alert alert-secondary mt-3">
+      <strong>No copy-number output found.</strong>
+      Expected <code>&lt;sample&gt;.ichor_all_sols.pdf</code> and
+      <code>&lt;sample&gt;.ichor_params.txt</code> under <code>cnv/</code>.
+      <div class="small text-muted mt-1">Searched: <code>{{ ichor.searched }}</code></div>
+    </div>
+  {% else %}
+
+    <div class="d-flex align-items-baseline justify-content-between mt-3 mb-2">
+      <div>
+        <h5 class="mb-0">Copy number &mdash; ichorCNA</h5>
+        <small class="text-muted">
+          Called from off-target reads against hg38
+          {% if ichor.headline.tumour_fraction %}
+            &middot; tumour fraction <strong>{{ ichor.headline.tumour_fraction }}</strong>
+          {% endif %}
+          {% if ichor.headline.ploidy %}
+            &middot; ploidy <strong>{{ ichor.headline.ploidy }}</strong>
+          {% endif %}
+        </small>
+      </div>
+      {% if ctx.ichor_sol_pages %}
+        <span class="small text-muted">
+          {{ ctx.ichor_sol_pages | length }} solution page(s) below &mdash; tick
+          the fit you accept to carry it into the Reporting tab
+        </span>
+      {% endif %}
+      {% if ichor.pdf_href %}
+        <a class="btn btn-outline-secondary btn-sm"
+           href="{{ ichor.pdf_href }}" target="_blank" rel="noopener">
+          Open PDF
+        </a>
+      {% endif %}
+    </div>
+
+    {% if ichor.params %}
+      <div class="table-responsive mb-3" style="max-width: 780px;">
+        <table class="table table-sm table-bordered mb-0">
+          <tbody>
+            {% for pair in ichor.params %}
+              <tr>
+                <th class="table-light w-50 fw-normal small">{{ pair.key }}</th>
+                <td class="small">{{ pair.value }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    {% if ichor.rasterised %}
+      <div class="alert alert-light border py-2 small">
+        {% if ichor.n_pages > 1 %}
+          {{ ichor.n_pages }} solutions are shown, one per fitted normal
+          fraction and ploidy combination. The first page is the selected fit;
+          the remainder are the alternatives the model considered, and are
+          worth checking when the selected fit is close to its runner-up.
+        {% else %}
+          Genome-wide log ratio and copy-number state.
+        {% endif %}
+        Pages are rendered from the PDF at build time so they display wherever
+        the report is opened; the vector original is one click away above.
+      </div>
+
+      {% for image in ichor.images %}
+        <figure class="mb-4">
+          <img src="{{ image }}" class="img-fluid border rounded"
+               alt="ichorCNA solution {{ loop.index }} for {{ sample }}">
+          <figcaption class="text-muted small mt-1">
+            Solution {{ loop.index }} of {{ ichor.n_pages }}
+          </figcaption>
+        </figure>
+      {% endfor %}
+
+    {% elif ichor.pdf_href %}
+      <div class="alert alert-warning py-2 small">
+        <code>pdftoppm</code> was not available at build time, so the figure
+        could not be rasterised. The embedded viewer below depends on the
+        browser's PDF plugin and may not render over <code>file://</code>.
+      </div>
+      <object data="{{ ichor.pdf_href }}" type="application/pdf"
+              width="100%" height="800">
+        <p>
+          This browser cannot display the embedded PDF.
+          <a href="{{ ichor.pdf_href }}" target="_blank" rel="noopener">Open it directly.</a>
+        </p>
+      </object>
+    {% endif %}
+
+  {% endif %}
+</div>
+
+{# All-solution pages, rasterised by the bundle script. Rendered with the same
+   card macro the rest of the CNV gallery uses, so the Include checkbox and the
+   Reporting tab need no special case. #}
+{% if ctx.ichor_sol_pages %}
+  <div class="mt-4">
+    <h6 class="text-muted">All fitted solutions</h6>
+    <p class="small text-muted">
+      Each page is one ploidy and normal-fraction combination. Where the
+      log-likelihoods are close the automatic pick is arbitrary, so the page
+      chosen here is the one that reaches the report.
+    </p>
+    <div class="row g-3">
+      {% for pg in ctx.ichor_sol_pages %}
+        {{ macros.render_cnv_plot_card('ichor_sol::' ~ pg.name, pg.label, pg.path, 'col-md-6 col-xl-4') }}
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}

@@ -4,14 +4,14 @@ augment_sv_support.py
 
 The SURVIVOR-merged VCF drops per-caller read support (it keeps only SUPP/
 SUPP_VEC and coordinates), so support_reads cannot be recovered from the merged
-file or from mm_annotated.tsv. This script layers the real per-caller support
+file or from leukemia_annotated.tsv. This script layers the real per-caller support
 back on, read directly from each caller's own VCF:
 
   Sniffles : INFO/SUPPORT
   CuteSV   : INFO/RE
   Severus  : FORMAT/DV   (fallback INFO/SUPP_READS first colon-field)
 
-For every row in an mm_annotated.tsv it matches the junction (orientation-
+For every row in an leukemia_annotated.tsv it matches the junction (orientation-
 agnostic, within --tol bp on BOTH breakpoints to absorb the few-bp shifts
 SURVIVOR introduces) against each caller's calls and writes:
 
@@ -26,11 +26,11 @@ Standard-library only.
 
 Usage:
   python3 augment_sv_support.py \\
-      --annotated  <sample>.mm_annotated.tsv \\
+      --annotated  <sample>.leukemia_annotated.tsv \\
       --sniffles   <sample>.sniffles.t2t.vcf.gz \\
       --cutesv     <sample>.cutesv.t2t.vcf.gz \\
       --severus    <sample>.severus.vcf \\
-      --output     <sample>.mm_annotated.tsv      (in place is fine)
+      --output     <sample>.leukemia_annotated.tsv      (in place is fine)
       [--tol 25]
 """
 
@@ -159,7 +159,7 @@ def best_match(ca, pa, cb, pb, records, tol):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Layer per-caller read support onto mm_annotated.tsv.")
+    ap = argparse.ArgumentParser(description="Layer per-caller read support onto leukemia_annotated.tsv.")
     ap.add_argument("--annotated", required=True)
     ap.add_argument("--sniffles", default=None)
     ap.add_argument("--cutesv", default=None)

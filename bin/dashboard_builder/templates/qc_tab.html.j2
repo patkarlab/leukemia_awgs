@@ -1,0 +1,173 @@
+{#
+  qc_tab.html.j2
+
+  QC tab for nanopore adaptive sampling. Replaces the hybrid-capture QC
+  content inherited from the reference pipeline; there is no Picard
+  HsMetrics, no fastp and no duplicate-rate section, because none of those
+  are produced by or meaningful for this assay.
+
+  Context required:
+    qc      - output of parsers/qc.py (or None)
+    sample  - sequencing identifier
+
+  Include inside the tab-content container of sample_report.html.j2, replacing
+  the existing <div id="tab-qc"> block.
+#}
+{# 
+  Resolves its context under either convention. This builder passes the
+  per-sample context as a single `ctx` object, so a bare variable name is
+  undefined and every guard falls through to the empty state. Checking both
+  means the include works whichever way build.py renders it.
+#}
+{% set qc = qc if (qc is defined and qc) else ((ctx.qc if ctx is defined else none) or none) %}
+{% set sample = sample if (sample is defined and sample) else ((ctx.sample if ctx is defined else none) or '') %}
+<div class="tab-pane fade" id="tab-qc" role="tabpanel">
+
+  {% if not qc %}
+    <div class="alert alert-danger mt-3">
+      <strong>Context not supplied.</strong>
+      The builder did not pass <code>qc</code> into this template,
+      under either <code>qc</code> or <code>ctx.qc</code>.
+      Either the parser never ran, or its result is not reaching the render
+      call. Check that <code>build.py</code> assigns
+      <code>ctx["qc"]</code> and that render() passes it through.
+    </div>
+  {% elif not qc.found %}
+    <div class="alert alert-secondary mt-3">
+      <strong>No QC output found.</strong>
+      Expected the QC_ONTARGET products under <code>qc/</code>:
+      <code>region_coverage.tsv</code>, <code>region_coverage.png</code>,
+      <code>readlen_hist.png</code>, <code>qscore_hist.png</code>.
+      <div class="small text-muted mt-1">Searched: <code>{{ qc.searched }}</code></div>
+    </div>
+  {% else %}
+
+    <h5 class="mt-3 mb-2">Run QC</h5>
+
+    {% if qc.reads and qc.reads.mode == 'summary' %}
+      <div class="table-responsive mb-3" style="max-width: 780px;">
+        <table class="table table-sm table-bordered mb-0">
+          <tbody>
+            {% for pair in qc.reads.pairs %}
+              <tr>
+                <th class="table-light w-50 fw-normal small">{{ pair.key | replace('_', ' ') }}</th>
+                <td class="small">{{ pair.value }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% elif qc.reads %}
+      <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-2">
+            <div class="text-muted small">Reads</div>
+            <div class="fs-5">{{ "{:,}".format(qc.reads.n_reads) }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-2">
+            <div class="text-muted small">Read N50</div>
+            <div class="fs-5">{{ "{:,}".format(qc.reads.read_n50) }} bp</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-2">
+            <div class="text-muted small">Mean read length</div>
+            <div class="fs-5">{{ "{:,.0f}".format(qc.reads.read_mean) }} bp</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="border rounded p-2">
+            <div class="text-muted small">Mean Q</div>
+            <div class="fs-5">
+              {% if qc.reads.mean_q is not none %}
+                {{ "%.1f"|format(qc.reads.mean_q) }}
+              {% else %}
+                &mdash;
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if qc.plots %}
+      <div class="row g-3">
+        {% for plot in qc.plots %}
+          <div class="{{ 'col-12' if plot.key == 'region_coverage' else 'col-12 col-lg-6' }}">
+            <figure class="mb-2">
+              <figcaption class="fw-semibold small mb-1">{{ plot.title }}</figcaption>
+              <img src="{{ plot.src }}" class="img-fluid border rounded"
+                   alt="{{ plot.title }} for {{ sample }}">
+              <figcaption class="text-muted small mt-1">{{ plot.caption }}</figcaption>
+            </figure>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if qc.coverage %}
+      <h6 class="mt-4 mb-2">
+        Per-region coverage
+        <small class="text-muted fw-normal">
+          {{ qc.coverage.n_rows }} regions &middot;
+          <code>{{ qc.coverage.filename }}</code>
+        </small>
+      </h6>
+
+      {% if qc.coverage.truncated %}
+        <div class="alert alert-warning py-2 small">
+          Table truncated for display. The full file is in the bundle.
+        </div>
+      {% endif %}
+
+      <div class="table-responsive">
+        <table id="qc-coverage-table" class="table table-sm table-striped table-hover w-100">
+          <thead class="table-light">
+            <tr>
+              {% for column in qc.coverage.columns %}
+                <th class="{{ 'text-end' if column.numeric else '' }}">{{ column.label }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in qc.coverage.rows %}
+              <tr>
+                {% for cell in row %}
+                  {% set column = qc.coverage.columns[loop.index0] %}
+                  <td class="{{ 'text-end' if column.numeric else '' }}"
+                      {% if cell.order is not none %}data-order="{{ cell.order }}"
+                      {%- elif column.numeric %}data-order="-1"{% endif %}>
+                    {{ cell.text }}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <script>
+      (function () {
+        "use strict";
+        if (window.__qcCovInit) { return; }
+        window.__qcCovInit = true;
+
+        function initTable() {
+          if (!window.jQuery || !jQuery.fn || !jQuery.fn.DataTable) { return false; }
+          var $table = jQuery('#qc-coverage-table');
+          if (!$table.length || jQuery.fn.DataTable.isDataTable($table)) { return true; }
+          $table.DataTable({ paging: false, info: true, searching: true });
+          return true;
+        }
+
+        if (!initTable()) {
+          document.addEventListener('DOMContentLoaded', initTable);
+        }
+      })();
+      </script>
+    {% endif %}
+
+  {% endif %}
+</div>

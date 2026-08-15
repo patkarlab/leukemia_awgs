@@ -1,0 +1,177 @@
+{#
+  overview_tab.html.j2
+
+  Case summary for nanopore adaptive sampling. Replaces the panel inherited
+  from the hybrid-capture pipeline, whose metrics (Picard percent-target-100x,
+  fold-80 penalty, AT/GC dropout, low-coverage exons, FLT3-ITD) are neither
+  produced by nor meaningful for this assay, and were rendering as dashes.
+
+  Every figure shown is read from a parser result. Nothing is computed here and
+  no threshold, expected value or interpretation is encoded; the cards report
+  what the run produced.
+#}
+{% set qc = qc if (qc is defined and qc) else ((ctx.qc if ctx is defined else none) or none) %}
+{% set ichor = ichor if (ichor is defined and ichor) else ((ctx.ichor if ctx is defined else none) or none) %}
+{% set translocations = translocations if (translocations is defined and translocations) else ((ctx.translocations if ctx is defined else none) or none) %}
+{% set clinical = clinical if (clinical is defined and clinical) else ((ctx.clinical if ctx is defined else none) or none) %}
+{% set sample = sample if (sample is defined and sample) else ((ctx.sample if ctx is defined else none) or '') %}
+
+<div class="tab-pane fade show active" id="tab-overview" role="tabpanel">
+
+  <div class="d-flex align-items-baseline justify-content-between mt-3 mb-3">
+    <h4 class="mb-0">{{ sample }}</h4>
+    <span class="badge bg-secondary">Technical review</span>
+  </div>
+
+  <div class="row g-3">
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">Median on-target depth</div>
+        <div class="fs-4">
+          {% if qc and qc.found and qc.depth %}
+            {{ "%.1f"|format(qc.depth.median) }}&times;
+          {% else %}&mdash;{% endif %}
+        </div>
+        <div class="text-muted small">
+          {% if qc and qc.found and qc.depth %}
+            across {{ qc.depth.n_regions }} regions
+            &middot; {{ "%.1f"|format(qc.depth.min) }}&ndash;{{ "%.1f"|format(qc.depth.max) }}&times;
+          {% else %}
+            per-region coverage not available
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">Regions below 10&times;</div>
+        <div class="fs-4">
+          {% if qc and qc.found and qc.depth %}
+            {{ qc.depth.n_below_10 }}
+          {% else %}&mdash;{% endif %}
+        </div>
+        <div class="text-muted small">
+          {% if qc and qc.found and qc.depth %}
+            of {{ qc.depth.n_regions }} &middot; {{ qc.depth.n_below_5 }} below 5&times;
+          {% else %}
+            &nbsp;
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">Rearrangements</div>
+        <div class="fs-4">
+          {% if translocations and translocations.found %}{{ translocations.n_translocations }}{% else %}&mdash;{% endif %}
+        </div>
+        <div class="text-muted small">
+          {% if translocations and translocations.found %}
+            of {{ translocations.n_events }} structural variants
+          {% else %}
+            not available
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">Tumour fraction</div>
+        <div class="fs-4">
+          {% if ichor and ichor.found and ichor.headline.tumour_fraction %}
+            {{ ichor.headline.tumour_fraction }}
+          {% else %}&mdash;{% endif %}
+        </div>
+        <div class="text-muted small">ichorCNA, off-target reads</div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">Ploidy</div>
+        <div class="fs-4">
+          {% if ichor and ichor.found and ichor.headline.ploidy %}
+            {{ ichor.headline.ploidy }}
+          {% else %}&mdash;{% endif %}
+        </div>
+        <div class="text-muted small">fitted, not measured</div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">Clinical variants</div>
+        {# The clinical parser exposes counts as .n / .n_pass rather than a row
+           list, which is what the pane this replaced read. Both shapes are
+           handled so the card survives a change in either direction. #}
+        <div class="fs-4">
+          {% if clinical and clinical.n is defined and clinical.n is not none %}{{ clinical.n }}
+          {% elif clinical and clinical.rows %}{{ clinical.rows | length }}
+          {% elif clinical %}0
+          {% else %}&mdash;{% endif %}
+        </div>
+        <div class="text-muted small">
+          {% if clinical and clinical.n_pass is defined and clinical.n_pass is not none %}
+            {{ clinical.n_pass }} PASS &middot; on-panel
+          {% else %}
+            on-panel, PASS
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">Reads</div>
+        <div class="fs-4">
+          {% if qc and qc.found and qc.reads and qc.reads.n_reads %}
+            {{ qc.reads.n_reads }}
+          {% else %}&mdash;{% endif %}
+        </div>
+        <div class="text-muted small">
+          {% if qc and qc.found and qc.reads and qc.reads.read_n50 %}
+            on-target &middot; N50 {{ qc.reads.read_n50 }} bp
+          {% else %}
+            on-target
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">Reference</div>
+        <div class="fs-6 mt-1">T2T-CHM13v2.0</div>
+        <div class="text-muted small">SV calling; hg38 for SNV and CNV</div>
+      </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+      <div class="border rounded p-3 h-100">
+        <div class="text-muted small text-uppercase">IGV snapshots</div>
+        <div class="fs-6 mt-1">
+          {% if translocations and translocations.has_igv %}
+            Present
+          {% else %}
+            Not generated
+          {% endif %}
+        </div>
+        <div class="text-muted small">paired breakpoint pages</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="alert alert-light border mt-4 py-2 small mb-0">
+    Counts are what the run produced. Coverage at the immunoglobulin and
+    WWOX/MAF windows reads lower than at focal gene-body windows because depth
+    is averaged over a much larger interval, so each region is interpreted
+    against its own window size rather than against a panel-wide figure. All
+    output on this page is for technical review ahead of clinical sign-off.
+  </div>
+
+</div>

@@ -1,0 +1,145 @@
+{#
+  BAF / LOH screen tab.
+
+  Insert the nav item into the tab list in sample_report.html.j2:
+
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="pill"
+        data-bs-target="#tab-bafloh" type="button" role="tab">BAF / LOH</button></li>
+
+  and include this file inside the tab-content container:
+
+    {% include 'baf_loh_tab.html.j2' %}
+
+  The parser is cohort-scoped; ctx.baf_loh is already filtered to this sample.
+#}
+<div class="tab-pane fade" id="tab-bafloh" role="tabpanel">
+
+  <h4>Allelic imbalance across panel regions</h4>
+
+  {% if not ctx.baf_loh %}
+    <div class="tspipe-empty">BAF / LOH screen output not available for this run.</div>
+  {% else %}
+
+    {#
+      The copy number caveat is raised before anything else. Where the ichorCNA
+      fit was degenerate every copy number call for this sample is unreliable,
+      and the flag column alone cannot distinguish copy-neutral loss from
+      deletion. Presenting the table without this banner would invite exactly
+      that misreading.
+    #}
+    {% if ctx.baf_loh.cn_warning %}
+      <div class="alert alert-warning" role="alert">
+        <strong>Copy number calls for this sample are unreliable.</strong>
+        {{ ctx.baf_loh.cn_warning }}.
+        Flagged regions below indicate allelic imbalance, but the mechanism
+        cannot be determined without a trustworthy copy number call: deletion,
+        gain and copy-neutral loss of heterozygosity all produce imbalance.
+      </div>
+    {% elif not ctx.baf_loh.cn_available %}
+      <div class="alert alert-secondary" role="alert">
+        No copy number data was joined to this screen. Flagged regions indicate
+        allelic imbalance only; distinguishing copy-neutral loss of
+        heterozygosity from deletion requires a copy number call at the same
+        locus.
+      </div>
+    {% endif %}
+
+    <div class="row g-3 mb-3">
+      <div class="col-sm-3">
+        <div class="tspipe-card">
+          <div class="label">Regions flagged</div>
+          <div class="value">{{ ctx.baf_loh.summary.n_loh_likely }}</div>
+          <div class="subvalue">
+            of {{ ctx.baf_loh.summary.n_regions }} panel regions
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="tspipe-card">
+          <div class="label">Equivocal</div>
+          <div class="value">{{ ctx.baf_loh.summary.n_equivocal }}</div>
+          <div class="subvalue">one criterion met, not both</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="tspipe-card">
+          <div class="label">Not assessable</div>
+          <div class="value">{{ ctx.baf_loh.summary.n_unassessable }}</div>
+          <div class="subvalue">too few heterozygous sites to judge</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="tspipe-card">
+          <div class="label">Tumour fraction</div>
+          {% if ctx.baf_loh.summary.tumour_fraction is not none %}
+            <div class="value">{{ ctx.baf_loh.summary.tumour_fraction | format_num(2) }}</div>
+            <div class="subvalue">ichorCNA estimate</div>
+          {% else %}
+            <div class="value">&ndash;</div>
+            <div class="subvalue">not estimated</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if ctx.baf_loh.summary.top_flagged %}
+      <div class="mb-3">
+        <strong>Flagged regions:</strong>
+        {% for r in ctx.baf_loh.summary.top_flagged %}
+          <span class="badge bg-light text-dark border me-1">
+            {{ r.region }}
+            {% if r.cn_call %}<span class="text-muted">&middot; {{ r.cn_call }}</span>{% endif %}
+          </span>
+        {% endfor %}
+        {% if ctx.baf_loh.summary.n_loh_likely > ctx.baf_loh.summary.top_flagged | length %}
+          <span class="text-muted">
+            +{{ ctx.baf_loh.summary.n_loh_likely - (ctx.baf_loh.summary.top_flagged | length) }} more
+          </span>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="tspipe-note small text-muted mb-3">
+      A region is flagged when the B-allele frequency distribution is both
+      depleted at 0.5 and split into two lobes. Interpretation requires the
+      copy number column alongside the flag: neutral copy number indicates
+      copy-neutral loss of heterozygosity, reduced copy number indicates
+      hemizygous deletion. <code>GAP</code> means no copy number bin overlapped
+      the region and <code>GAP_INFERRED</code> means the value was inferred
+      from concordant flanking bins rather than measured. Regions marked
+      <code>UNASSESSABLE</code> carried too few heterozygous sites to judge and
+      should not be read as normal.
+    </div>
+
+    {% if ctx.baf_loh.table and ctx.baf_loh.table.rows %}
+      {{ macros.render_datatable('bafloh-table',
+                                 ctx.baf_loh.table.columns,
+                                 ctx.baf_loh.table.rows) }}
+    {% else %}
+      <div class="tspipe-empty">No regions returned for this sample.</div>
+    {% endif %}
+
+    {% if ctx.baf_loh.figures %}
+      <h4 class="mt-4">Figures</h4>
+      {% for fig in ctx.baf_loh.figures %}
+        <div class="mb-3">
+          <div class="small text-muted mb-1">{{ fig.label }}</div>
+          <img src="{{ fig.path }}" class="img-fluid border" alt="{{ fig.label }}">
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {% if ctx.baf_loh.cohort_figure %}
+      <h4 class="mt-4">Cohort context</h4>
+      <div class="small text-muted mb-1">{{ ctx.baf_loh.cohort_figure.label }}</div>
+      <img src="{{ ctx.baf_loh.cohort_figure.path }}" class="img-fluid border"
+           alt="{{ ctx.baf_loh.cohort_figure.label }}">
+      <div class="small text-muted mt-1">
+        Hatched cells were not assessable. Regions that deflect in every sample
+        are more likely to reflect mappability than shared biology.
+      </div>
+    {% endif %}
+
+  {% endif %}
+  {% include 'baf_loh_enhance.html.j2' %}
+</div>

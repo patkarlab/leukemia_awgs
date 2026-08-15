@@ -3,7 +3,7 @@ process AUGMENT_SV_SUPPORT {
     label 'process_low'
     conda params.conda_awgs_sv
 
-    publishDir "${params.outdir}/t2t/calls/mm_annotated", mode: 'copy', pattern: "*.mm_annotated.tsv"
+    publishDir "${params.outdir}/t2t/calls/leukemia_annotated", mode: 'copy', pattern: "*.leukemia_annotated.tsv"
 
     input:
     // annotated staged under a different name to avoid an output-name collision
@@ -14,7 +14,7 @@ process AUGMENT_SV_SUPPORT {
           path(severus_vcf)
 
     output:
-    tuple val(meta), path("${meta.id}.mm_annotated.tsv"), emit: annotated
+    tuple val(meta), path("${meta.id}.leukemia_annotated.tsv"), emit: annotated
     path "versions.yml",                                  emit: versions
 
     when:
@@ -27,7 +27,7 @@ process AUGMENT_SV_SUPPORT {
         --sniffles  ${sniffles_vcf} \\
         --cutesv    ${cutesv_vcf} \\
         --severus   ${severus_vcf} \\
-        --output    ${meta.id}.mm_annotated.tsv \\
+        --output    ${meta.id}.leukemia_annotated.tsv \\
         --tol       ${params.support_tol}
 
     cat <<-END_VERSIONS > versions.yml

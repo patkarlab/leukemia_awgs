@@ -1,0 +1,318 @@
+{#
+  translocations_tab.html.j2
+
+  Structural-variant tab. Renders the merged, annotated translocation table
+  with every column sortable, defaulting to descending supporting-read count,
+  and gives each event a paired IGV view showing both breakpoints of the
+  rearrangement side by side.
+
+  Context required:
+    translocations  - output of parsers/translocations.py (or None)
+    sample          - sequencing identifier
+
+  Include this inside the tab-content container of sample_report.html.j2:
+    {% raw %}{% include 'translocations_tab.html.j2' %}{% endraw %}
+#}
+{# 
+  Resolves its context under either convention. This builder passes the
+  per-sample context as a single `ctx` object, so a bare variable name is
+  undefined and every guard falls through to the empty state. Checking both
+  means the include works whichever way build.py renders it.
+#}
+{% set translocations = translocations if (translocations is defined and translocations) else ((ctx.translocations if ctx is defined else none) or none) %}
+{% set sample = sample if (sample is defined and sample) else ((ctx.sample if ctx is defined else none) or '') %}
+<div class="tab-pane fade" id="tab-translocations" role="tabpanel">
+
+  {% if not translocations %}
+    <div class="alert alert-danger mt-3">
+      <strong>Context not supplied.</strong>
+      The builder did not pass <code>translocations</code> into this template,
+      under either <code>translocations</code> or <code>ctx.translocations</code>.
+      Either the parser never ran, or its result is not reaching the render
+      call. Check that <code>build.py</code> assigns
+      <code>ctx["translocations"]</code> and that render() passes it through.
+    </div>
+  {% elif not translocations.found or translocations.n_events == 0 %}
+    <div class="alert alert-secondary mt-3">
+      <strong>No translocations reported.</strong>
+      {{ translocations.reason if translocations.reason else 'The annotated table was read but contains no events.' }}
+      <div class="small text-muted mt-1">Searched: <code>{{ translocations.searched }}</code></div>
+      An empty result is a legitimate outcome and is not a pipeline failure.
+    </div>
+  {% else %}
+
+    <div class="d-flex align-items-baseline justify-content-between mt-3 mb-2">
+      <div>
+        <h5 class="mb-0">Structural variants</h5>
+        <small class="text-muted">
+          {{ translocations.n_translocations }} rearrangement{{ '' if translocations.n_translocations == 1 else 's' }}
+          of {{ translocations.n_events }} structural variants
+          &middot; {{ translocations.n_pass }} PASS
+          &middot; called on T2T-CHM13v2.0
+          &middot; source <code>{{ translocations.filename }}</code>
+        </small>
+      </div>
+      {% if translocations.n_other %}
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="tx-show-all">
+          <label class="form-check-label small text-muted" for="tx-show-all">
+            Show all SV types ({{ translocations.n_other }} DEL / INS / INV / DUP)
+          </label>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if translocations.n_translocations == 0 %}
+      <div class="alert alert-secondary py-2">
+        <strong>No rearrangements reported.</strong>
+        The annotated table holds {{ translocations.n_events }} structural
+        variants of other classes; enable the switch above to inspect them.
+      </div>
+    {% endif %}
+
+    <div class="alert alert-light border py-2 small">
+      Supporting-read counts are re-derived from each caller's original VCF,
+      not from the merged record. Sort on <em>Supporting reads</em> to rank
+      events by evidence; use <em>N callers</em> to see which events are
+      corroborated across the ensemble.
+      {% if translocations.has_igv %}
+        The <em>IGV</em> button opens both breakpoints of an event together,
+        anchor locus on the left and partner locus on the right. Breakpoint
+        pages are generated for rearrangements only.
+      {% endif %}
+    </div>
+
+    <div class="table-responsive">
+      <table id="tx-table" class="table table-sm table-striped table-hover align-middle w-100">
+        <thead class="table-light">
+          <tr>
+            {% if translocations.has_igv %}<th>IGV</th>{% endif %}
+            {% for column in translocations.columns %}
+              <th class="{{ 'text-end' if column.numeric else '' }}">{{ column.label }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in translocations.rows %}
+            <tr data-translocation="{{ '1' if row.is_translocation else '0' }}">
+              {% if translocations.has_igv %}
+                <td>
+                  {% if row.igv.html_a or row.igv.html_b %}
+                    <button type="button"
+                            class="btn btn-outline-primary btn-sm py-0 px-2 tx-igv-btn"
+                            data-event-id="{{ row.event_id }}"
+                            data-locus-a="{{ row.igv.locus_a }}"
+                            data-locus-b="{{ row.igv.locus_b }}"
+                            data-point-a="{{ row.igv.point_a }}"
+                            data-point-b="{{ row.igv.point_b }}"
+                            data-label-a="{{ row.igv.label_a }}"
+                            data-label-b="{{ row.igv.label_b }}"
+                            data-html-a="{{ row.igv.html_a or '' }}"
+                            data-html-b="{{ row.igv.html_b or '' }}">IGV</button>
+                  {% else %}
+                    <span class="text-muted small">&mdash;</span>
+                  {% endif %}
+                </td>
+              {% endif %}
+              {% for cell in row.cells %}
+                {% set column = translocations.columns[loop.index0] %}
+                {# data-order is emitted only where a numeric sort key exists.
+                   Text columns are left alone so they still sort as text;
+                   blank numeric cells get -1 so they sink below real values. #}
+                <td class="{{ 'text-end' if column.numeric else '' }}"
+                    {% if cell.order is not none %}data-order="{{ cell.order }}"
+                    {%- elif column.numeric %}data-order="-1"{% endif %}>
+                  {{ cell.text }}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Paired-breakpoint IGV viewer. Two independent igv-reports pages are
+       loaded side by side; each is a standalone file, so no cross-frame
+       scripting or srcdoc escaping is involved. #}
+    <div class="modal fade" id="tx-igv-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+          <div class="modal-header py-2">
+            <h6 class="modal-title mb-0" id="tx-igv-title">Breakpoint view</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-0">
+            <div class="row g-0 h-100">
+              <div class="col-6 border-end d-flex flex-column">
+                <div class="px-3 py-1 bg-light border-bottom small">
+                  <strong id="tx-igv-head-a">Breakpoint A</strong>
+                  <span class="text-muted ms-2" id="tx-igv-locus-a"></span>
+                  <a class="ms-2" id="tx-igv-open-a" target="_blank" rel="noopener">open</a>
+                </div>
+                <iframe id="tx-igv-frame-a" class="flex-grow-1 border-0" style="min-height:70vh" src="about:blank"></iframe>
+              </div>
+              <div class="col-6 d-flex flex-column">
+                <div class="px-3 py-1 bg-light border-bottom small">
+                  <strong id="tx-igv-head-b">Breakpoint B</strong>
+                  <span class="text-muted ms-2" id="tx-igv-locus-b"></span>
+                  <a class="ms-2" id="tx-igv-open-b" target="_blank" rel="noopener">open</a>
+                </div>
+                <iframe id="tx-igv-frame-b" class="flex-grow-1 border-0" style="min-height:70vh" src="about:blank"></iframe>
+              </div>
+            </div>
+            <div id="tx-igv-missing" class="alert alert-warning m-3 d-none">
+              No IGV page was found for this event. Generate the breakpoint
+              snapshots with <code>tools/make_igv_snapshots.sh</code>, rebuild
+              the report bundle, then rebuild the dashboard.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    (function () {
+      "use strict";
+
+      // Initialise once; the pane may be re-shown by the tab controller.
+      if (window.__txTableInit) { return; }
+      window.__txTableInit = true;
+
+      var defaultSort = {{ translocations.default_sort_index if translocations.default_sort_index is not none else -1 }};
+      var igvOffset = {{ 1 if translocations.has_igv else 0 }};
+      var order = [];
+      if (defaultSort >= 0) {
+        order = [[defaultSort + igvOffset, 'desc']];
+      }
+
+      function initTable() {
+        if (!window.jQuery || !jQuery.fn || !jQuery.fn.DataTable) { return false; }
+        var $table = jQuery('#tx-table');
+        if (!$table.length || jQuery.fn.DataTable.isDataTable($table)) { return true; }
+
+        var config = {
+          paging: false,
+          info: true,
+          searching: true,
+          order: order,
+          columnDefs: [
+            {% if translocations.has_igv %}{ targets: 0, orderable: false, searchable: false }{% endif %}
+          ]
+        };
+
+        // The column-visibility button is optional; only wire it when the
+        // Buttons extension is actually vendored in this build.
+        if (jQuery.fn.DataTable.Buttons) {
+          config.dom = "<'row'<'col-sm-6'B><'col-sm-6'f>>" +
+                       "<'row'<'col-sm-12'tr>>" +
+                       "<'row'<'col-sm-12'i>>";
+          config.buttons = [{
+            extend: 'colvis',
+            text: 'Columns',
+            className: 'btn btn-outline-secondary btn-sm'
+          }];
+        }
+
+        // Rows for other SV classes are rendered but filtered out by
+        // default. The filter is scoped to this table by id so it cannot
+        // affect the other DataTables on the page.
+        if (!window.__txFilterInstalled) {
+          window.__txFilterInstalled = true;
+          jQuery.fn.DataTable.ext.search.push(function (settings, data, dataIndex) {
+            if (settings.nTable.id !== 'tx-table') { return true; }
+            var toggle = document.getElementById('tx-show-all');
+            if (toggle && toggle.checked) { return true; }
+            var node = settings.aoData[dataIndex].nTr;
+            return !node || node.getAttribute('data-translocation') !== '0';
+          });
+        }
+
+        var table = $table.DataTable(config);
+
+        var showAll = document.getElementById('tx-show-all');
+        if (showAll) {
+          showAll.addEventListener('change', function () { table.draw(); });
+        }
+
+        {% for column in translocations.columns %}
+          {% if column.default_hidden %}
+        table.column({{ loop.index0 }} + igvOffset).visible(false, false);
+          {% endif %}
+        {% endfor %}
+        table.columns.adjust();
+        return true;
+      }
+
+      if (!initTable()) {
+        document.addEventListener('DOMContentLoaded', initTable);
+      }
+
+      // Paired breakpoint viewer -------------------------------------------
+      var modalEl = document.getElementById('tx-igv-modal');
+      if (!modalEl) { return; }
+
+      function frameSource(html) {
+        // Breakpoint pages are written by bin/igv_snapshots.py into
+        // igv/translocations/<sample>/ inside the bundle, one standalone
+        // file per breakpoint. The parser resolves the relative path.
+        return html ? html : null;
+      }
+
+      function showEvent(button) {
+        var srcA = frameSource(button.getAttribute('data-html-a'));
+        var srcB = frameSource(button.getAttribute('data-html-b'));
+
+        document.getElementById('tx-igv-title').textContent =
+          button.getAttribute('data-label-a') + '  ::  ' +
+          button.getAttribute('data-label-b') +
+          '   (' + button.getAttribute('data-event-id') + ')';
+
+        document.getElementById('tx-igv-head-a').textContent =
+          button.getAttribute('data-label-a');
+        document.getElementById('tx-igv-head-b').textContent =
+          button.getAttribute('data-label-b');
+        document.getElementById('tx-igv-locus-a').textContent =
+          button.getAttribute('data-point-a');
+        document.getElementById('tx-igv-locus-b').textContent =
+          button.getAttribute('data-point-b');
+
+        var missing = document.getElementById('tx-igv-missing');
+        var frameA = document.getElementById('tx-igv-frame-a');
+        var frameB = document.getElementById('tx-igv-frame-b');
+        var openA = document.getElementById('tx-igv-open-a');
+        var openB = document.getElementById('tx-igv-open-b');
+
+        if (!srcA && !srcB) {
+          missing.classList.remove('d-none');
+          frameA.src = 'about:blank';
+          frameB.src = 'about:blank';
+          openA.removeAttribute('href');
+          openB.removeAttribute('href');
+        } else {
+          missing.classList.add('d-none');
+          frameA.src = srcA || 'about:blank';
+          frameB.src = srcB || 'about:blank';
+          if (srcA) { openA.href = srcA; } else { openA.removeAttribute('href'); }
+          if (srcB) { openB.href = srcB; } else { openB.removeAttribute('href'); }
+        }
+      }
+
+      document.addEventListener('click', function (event) {
+        var button = event.target.closest ? event.target.closest('.tx-igv-btn') : null;
+        if (!button) { return; }
+        showEvent(button);
+        if (window.bootstrap && bootstrap.Modal) {
+          bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+      });
+
+      // Release the embedded alignment data when the viewer closes.
+      modalEl.addEventListener('hidden.bs.modal', function () {
+        document.getElementById('tx-igv-frame-a').src = 'about:blank';
+        document.getElementById('tx-igv-frame-b').src = 'about:blank';
+      });
+    })();
+    </script>
+
+  {% endif %}
+</div>
