@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -65,6 +66,54 @@ SUFFIX = {"LOCUS", "CLUSTER", "ENHANCER", "REGION", "INTERVAL"}
 # -----------------------------------------------------------------------------
 # Inputs
 # -----------------------------------------------------------------------------
+def load_exons(gff: Optional[Path], wanted: set) -> Dict[str, List[Tuple[int, int, int]]]:
+    """Exons per gene as (start, end, exon_number), numbered in transcript
+    order so the strand is accounted for.
+
+    Drawn under each gene plot because an intragenic call is reported and
+    confirmed by exon: IKZF1 delta-4-7 and the KMT2A exon 2-8 duplication are
+    named that way, and a coordinate span alone does not say which they are.
+
+    The longest transcript per gene is used, matching how the panel BED itself
+    was built.
+    """
+    if not gff or not gff.exists():
+        return {}
+    want = {w.upper() for w in wanted}
+    tx: Dict[str, Dict[str, list]] = {}
+    opener = gzip.open if str(gff).endswith(".gz") else open
+    with opener(gff, "rt") as fh:
+        for line in fh:
+            if not line or line[0] == "#":
+                continue
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 9 or f[2] not in ("mRNA", "exon", "transcript"):
+                continue
+            attrs = dict(kv.split("=", 1) for kv in f[8].rstrip(";").split(";")
+                         if "=" in kv)
+            gene = (attrs.get("gene") or attrs.get("Name") or "").upper()
+            if gene not in want:
+                continue
+            if f[2] in ("mRNA", "transcript"):
+                tid = attrs.get("ID", "")
+                tx.setdefault(gene, {}).setdefault(tid, [])
+            else:
+                tid = attrs.get("Parent", "")
+                if gene in tx and tid in tx[gene]:
+                    tx[gene][tid].append((int(f[3]) - 1, int(f[4]), f[6]))
+
+    out: Dict[str, List[Tuple[int, int, int]]] = {}
+    for gene, txs in tx.items():
+        best = max(txs.values(), key=lambda ex: sum(e - s for s, e, _ in ex),
+                   default=[])
+        if not best:
+            continue
+        strand = best[0][2]
+        best = sorted(best, key=lambda e: e[0], reverse=(strand == "-"))
+        out[gene] = [(s, e, i + 1) for i, (s, e, _) in enumerate(best)]
+    return out
+
+
 def load_panel(path: Path) -> List[Tuple[str, int, int, str]]:
     out = []
     for line in path.read_text().splitlines():
@@ -185,6 +234,53 @@ def build_reference(ref_samples: List[Dict], max_disagree: float
 # -----------------------------------------------------------------------------
 # Calling
 # -----------------------------------------------------------------------------
+def exon_supported(exons: List[Tuple[int, int, int]], start: int, end: int,
+                   tol: int) -> Tuple[bool, str]:
+    """Whether a segment's edges fall near exon boundaries.
+
+    A copy-number change arises from recombination or replication error, so its
+    breakpoints sit at or near exon boundaries and it covers whole exons. GC
+    content and mappability vary along a gene just as consistently and produce
+    departures of similar magnitude, but they have no reason to align to exons.
+    That is the difference the filter uses.
+
+    Both conditions are required: the segment must cover at least one exon, and
+    at least one edge must lie within tol of an exon boundary. Coverage alone
+    passes any window long enough to swallow an exon by chance; edge proximity
+    alone passes a wave that happens to start near one.
+
+    Returns (supported, reason). With no annotation, everything passes and the
+    reason says so, since the filter cannot judge what it cannot see.
+    """
+    if not exons:
+        return True, "no exon annotation"
+    covered = [n for s, e, n in exons if s < end and start < e]
+    if not covered:
+        return False, "covers no exon"
+    edges = [x for s, e, _ in exons for x in (s, e)]
+    near_start = min(abs(start - x) for x in edges)
+    near_end = min(abs(end - x) for x in edges)
+    if min(near_start, near_end) > tol:
+        return False, (f"neither edge within {tol:,} bp of an exon boundary "
+                       f"({near_start:,} / {near_end:,})")
+    return True, ""
+
+
+def exon_span(exons: List[Tuple[int, int, int]], start: int, end: int) -> str:
+    """Exon numbers a segment overlaps, as '4-7' or '2,5,9'."""
+    hit = sorted(num for s, e, num in exons if s < end and start < e)
+    if not hit:
+        return ""
+    runs, run = [], [hit[0]]
+    for n in hit[1:]:
+        if n == run[-1] + 1:
+            run.append(n)
+        else:
+            runs.append(run); run = [n]
+    runs.append(run)
+    return ",".join(f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in runs)
+
+
 def mad(a: np.ndarray) -> float:
     """Median absolute deviation, scaled to a standard-deviation equivalent."""
     a = a[~np.isnan(a)]
@@ -193,39 +289,64 @@ def mad(a: np.ndarray) -> float:
     return 1.4826 * float(np.median(np.abs(a - np.median(a))))
 
 
-def segment(log2: np.ndarray, positions: np.ndarray, threshold: float,
-            min_bins: int) -> List[Tuple[int, int, float, int]]:
-    """Contiguous runs of bins on the same side of the threshold.
+def segment(log2: np.ndarray, positions: np.ndarray, min_z: float,
+            min_effect: float, min_bins: int, binsize: int
+            ) -> List[Tuple[int, int, float, int]]:
+    """Focal deviations within a gene, by multi-scale windowed z-test.
 
-    A plain run-length scan rather than circular binary segmentation. The
-    events this needs to find are focal and sharp-edged, IKZF1 exon 4-7 or a
-    CDKN2A homozygous loss, and the panel gives at most a few hundred bins per
-    gene, so the extra machinery buys nothing.
+    A run-based scan cannot find a short event. Bin-to-bin depth noise at 30x
+    in a 1 kb bin has a log2 SD near 0.26, so a single-copy gain at log2 0.585
+    puts individual bins either side of any threshold and the run breaks before
+    it reaches a usable length. Requiring every bin to cross therefore misses
+    exactly the events worth finding: a KMT2A partial tandem duplication spans
+    about 5 kb, five bins.
+
+    Averaging is what recovers them. The standard error of a window mean falls
+    as sqrt(n), so five bins at SD 0.26 give 0.116 and a one-copy change is a
+    5-sigma departure. Windows are scanned at several scales and scored
+    against the gene's own baseline and its own noise, so a quiet gene is held
+    to a tighter bar than a ragged one.
+
+    Both a z threshold and an absolute effect size are required. Over a long
+    window a trivial shift becomes formally significant, and a 0.05 log2
+    departure is not a copy-number change however many bins support it.
     """
-    # Deviation is measured from the gene's own baseline, not from zero. A
-    # gene sitting on a trisomic chromosome has every bin at log2 0.5; the
-    # question for an intragenic call is whether part of it departs from the
-    # rest of it.
-    baseline = float(np.nanmedian(log2)) if len(log2) else 0.0
-    log2 = log2 - baseline
-
-    out = []
     n = len(log2)
-    i = 0
-    while i < n:
-        if np.isnan(log2[i]) or abs(log2[i]) < threshold:
-            i += 1
+    if n < min_bins:
+        return []
+    base = float(np.nanmedian(log2))
+    dev = log2 - base
+    sd = mad(log2) or 0.25
+
+    scales = sorted({min_bins, 5, 10, 20, 50, 100, 200} | {min_bins * 2})
+    scales = [s for s in scales if min_bins <= s <= n]
+    if not scales:
+        scales = [min_bins]
+
+    hits = []
+    for w in scales:
+        # Cumulative sums make the window means one pass per scale.
+        cs = np.concatenate([[0.0], np.nancumsum(dev)])
+        means = (cs[w:] - cs[:-w]) / w
+        se = sd / np.sqrt(w)
+        z = means / se if se > 0 else np.zeros_like(means)
+        for i in np.where((np.abs(z) >= min_z) & (np.abs(means) >= min_effect))[0]:
+            hits.append((abs(z[i]), int(i), int(i + w - 1), float(means[i] + base), w))
+
+    if not hits:
+        return []
+
+    # Strongest first, then drop anything overlapping an accepted call, so one
+    # event is reported once at its best-supported scale.
+    hits.sort(reverse=True)
+    taken: List[Tuple[int, int]] = []
+    out = []
+    for _zv, i, j, level, w in hits:
+        if any(not (j < a or i > b) for a, b in taken):
             continue
-        sign = np.sign(log2[i])
-        j = i
-        while j < n and not np.isnan(log2[j]) and np.sign(log2[j]) == sign \
-                and abs(log2[j]) >= threshold:
-            j += 1
-        if j - i >= min_bins:
-            seg = log2[i:j]
-            out.append((int(positions[i]), int(positions[j - 1]),
-                        float(np.median(seg)) + baseline, j - i))
-        i = j
+        taken.append((i, j))
+        out.append((int(positions[i]), int(positions[j]), level, w))
+    out.sort(key=lambda r: r[0])
     return out
 
 
@@ -281,14 +402,15 @@ def main() -> int:
                     help="Panel regions a chromosome needs before its own "
                          "median is used as the baseline for its genes [3]. "
                          "Below this the panel baseline is used.")
-    ap.add_argument("--min-bins", type=int, default=30,
-                    help="Shortest reportable segment, in bins [30]. At the "
-                         "default bin size that is 30 kb, below which real "
-                         "focal events are rare and depth noise is not.")
-    ap.add_argument("--seg-sd", type=float, default=4.0,
-                    help="Segment threshold in units of the sample's own "
-                         "bin-level MAD [4.0]. Derived per sample rather than "
-                         "fixed, since bin scatter depends on depth.")
+    ap.add_argument("--min-bins", type=int, default=4,
+                    help="Shortest reportable segment, in bins [4]. A KMT2A "
+                         "partial tandem duplication spans about 5 kb, so a "
+                         "longer floor makes the commonest intragenic event in "
+                         "AML structurally undetectable.")
+    ap.add_argument("--seg-z", type=float, default=5.0,
+                    help="Standard errors a window mean must depart from the "
+                         "gene baseline [5.0]. Scored against the gene's own "
+                         "noise, so a quiet gene is held to a tighter bar.")
     ap.add_argument("--threshold", type=float, default=0.3,
                     help="Absolute log2 ratio for a bin to join a segment "
                          "[0.4]. A clonal heterozygous loss is -1.0; 0.4 "
@@ -297,9 +419,25 @@ def main() -> int:
                     help="Tumour fraction for absolute CN [1.0]. Blast count "
                          "or the on-target estimate is better than ichorCNA's "
                          "on a near-flat genome.")
-    ap.add_argument("--plot-genes", default="",
-                    help="Comma-separated genes to plot, or 'called' for "
-                         "every gene with a segment, or 'all'.")
+    ap.add_argument("--exon-edge-tol", type=int, default=2000,
+                    help="How near an exon boundary a segment edge must fall "
+                         "[2000]. Requires --gff; without annotation no "
+                         "segment is filtered.")
+    ap.add_argument("--keep-unsupported-segments", action="store_true",
+                    help="Report segments whose edges do not align to exons, "
+                         "flagged in exon_support, instead of dropping them.")
+    ap.add_argument("--gff", type=Path, default=None,
+                    help="RefSeq GFF matching the alignment reference. Draws "
+                         "exons under each gene plot and labels the numbers a "
+                         "segment covers, so an intragenic call reads as "
+                         "'exons 4-7' rather than as a coordinate span.")
+    ap.add_argument("--plot-genes", default="all",
+                    help="Comma-separated regions to plot, 'called' for only "
+                         "those with a call, 'all' for every region in the "
+                         "panel, or 'none' [all]. Every region is plotted by "
+                         "default: a flat plot is the evidence that a locus "
+                         "was examined and found normal, which a report needs "
+                         "as much as it needs the abnormal ones.")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = ap.parse_args()
 
@@ -410,8 +548,11 @@ def main() -> int:
             "used_as_baseline": "yes" if c in chrom_base else "no",
         })
 
+    plot_exons = load_exons(args.gff, {n.upper() for n in by_region})
+
     gene_rows, seg_rows = [], []
     uninformative = []
+    n_exon_filtered = 0
     for name, vals in sorted(by_region.items()):
         vals.sort(key=lambda v: (v[0], v[1]))
         chrom = vals[0][0]
@@ -488,8 +629,16 @@ def main() -> int:
         })
         # Segment threshold is the larger of the global floor and this
         # gene's own scatter, so a noisy region has to clear a higher bar.
-        seg_thr = max(args.threshold, args.seg_sd * mad(l2r))
-        for s, e, sl2, nb in segment(l2r, pos, seg_thr, args.min_bins):
+        seg_exons = []
+        for tok in name.upper().replace("_", "/").split("/"):
+            seg_exons.extend(plot_exons.get(tok, []))
+        for s, e, sl2, nb in segment(l2r, pos, args.seg_z, args.threshold,
+                                     args.min_bins, args.binsize):
+            ok, why = exon_supported(seg_exons, s, e + args.binsize,
+                                     args.exon_edge_tol)
+            if not ok and not args.keep_unsupported_segments:
+                n_exon_filtered += 1
+                continue
             if nb == len(l2):
                 continue        # whole-region shift, already in the gene row
             seg_rows.append({
@@ -499,6 +648,8 @@ def main() -> int:
                 "median_log2": f"{sl2:.3f}",
                 "copy_number": f"{cn_from_log2(sl2, args.purity):.2f}",
                 "call": "LOSS" if sl2 < 0 else "GAIN",
+                "exons": exon_span(seg_exons, s, e + args.binsize),
+                "exon_support": why or "edges align to exon boundaries",
                 "note": "intragenic; confirm against the alignment",
             })
 
@@ -511,7 +662,8 @@ def main() -> int:
                             "chrom_baseline", "ratio", "copy_number",
                             "call", "n_reference_samples"]),
         (spath, seg_rows, ["sample", "region", "chrom", "start", "end", "n_bins",
-                           "span_bp", "median_log2", "copy_number", "call", "note"]),
+                           "span_bp", "median_log2", "copy_number", "call",
+                           "exons", "exon_support", "note"]),
     ):
         with open(path, "w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=cols, delimiter="\t",
@@ -544,6 +696,11 @@ def main() -> int:
                              f"log2 {r['median_log2']:>7}  CN {r['copy_number']} "
                              f"({r['n_regions']} regions)\n")
 
+    if n_exon_filtered:
+        sys.stderr.write(
+            f"  {n_exon_filtered} segment(s) dropped: edges did not align to "
+            f"exon boundaries\n")
+
     n_called = sum(1 for r in gene_rows if r["call"] != "NEUTRAL")
     sys.stderr.write(
         f"{args.sample}: {len(gene_rows)} regions, {n_called} non-neutral, "
@@ -558,7 +715,7 @@ def main() -> int:
 
     # Plots.
     want = {g.strip().upper() for g in args.plot_genes.split(",") if g.strip()}
-    if want:
+    if want and "NONE" not in want:
         try:
             import matplotlib
             matplotlib.use("Agg")
@@ -568,6 +725,8 @@ def main() -> int:
             return 0
         called = {r["region"].upper() for r in gene_rows if r["call"] != "NEUTRAL"}
         called |= {r["region"].upper() for r in seg_rows}
+        uninf = {u["region"].upper() for u in uninformative}
+        exons = plot_exons
         pdir = Path(f"{args.out_prefix}.gene_cnv_plots")
         pdir.mkdir(parents=True, exist_ok=True)
         n = 0
@@ -577,19 +736,36 @@ def main() -> int:
                     or ("CALLED" in want and u in called)):
                 continue
             vals.sort(key=lambda v: (v[0], v[1]))
+            chrom = vals[0][0]
             pos = np.array([v[1] for v in vals]) / 1e6
             l2 = np.array([v[2] for v in vals])
-            plt.figure(figsize=(9, 3.2), dpi=140)
+            plt.figure(figsize=(9, 3.5), dpi=150)
             plt.axhline(0, color="#999", lw=0.8)
             for y, c in ((-1.0, "#c00"), (0.585, "#06c")):
                 plt.axhline(y, color=c, lw=0.6, ls=":")
             plt.scatter(pos, l2, s=6,
                         c=["#c00" if v <= -args.threshold else
                            "#06c" if v >= args.threshold else "#888" for v in l2])
-            plt.ylim(-3.2, 2.2)
+            # Exon track along the bottom, every exon numbered. Labels run
+            # vertically because exons are often only a few hundred bases wide
+            # on a whole-gene axis, so horizontal text would overlap and be
+            # dropped exactly where the exons are densest.
+            ex = []
+            for tok in name.upper().replace("_", "/").split("/"):
+                ex.extend(exons.get(tok, []))
+            if ex:
+                for s_, e_, num in ex:
+                    plt.gca().add_patch(plt.Rectangle(
+                        (s_ / 1e6, -2.86), max((e_ - s_) / 1e6, 0.0006), 0.16,
+                        facecolor="#556677", edgecolor="none", zorder=3))
+                    plt.text((s_ + e_) / 2e6, -2.96, str(num), fontsize=4.5,
+                             ha="center", va="top", rotation=90,
+                             color="#556677", clip_on=False)
+            plt.ylim(-3.55, 2.2)
             plt.ylabel("log2 ratio")
-            plt.xlabel(f"{vals[0][0]} (Mb)")
-            plt.title(f"{args.sample}  {name}", fontsize=10)
+            plt.xlabel(f"{chrom} (Mb)")
+            sub = "  [uninformative]" if u in uninf else ""
+            plt.title(f"{args.sample}  {name}{sub}", fontsize=10)
             plt.tight_layout()
             plt.savefig(pdir / f"{args.sample}.{name.replace('/', '_')}.png")
             plt.close()
