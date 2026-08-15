@@ -26,6 +26,7 @@ The injection is delimited by HTML comment sentinels and can be re-run safely.
 """
 
 import argparse
+import csv
 import logging
 import re
 import shutil
@@ -77,6 +78,9 @@ FILE_DESCRIPTIONS = [
     ("_exon_coverage.tsv",                   "Per-exon coverage (duplicates included)"),
     ("_igv_report.html",                     "IGV visualization (clinical variants)"),
     ("_focal_dup_igv.html",                  "IGV visualization (focal duplications)"),
+    (".chrom_cnv.tsv",                       "Chromosome-level copy number"),
+    (".gene_cnv.tsv",                        "Gene-level copy number"),
+    (".gene_cnv_segments.tsv",               "Intragenic copy-number segments"),
     ("_NV_fastp.html",                       "fastp QC report"),
     ("_fastp.html",                          "fastp QC report"),
     ("_dashboard.html",                      "Pre-existing per-sample dashboard"),
@@ -237,6 +241,7 @@ def collect_sample_context(sample_dir, build_time, subdir="",
         "oncokb": {},        # chr:pos:ref:alt -> OncoKB annotation dict (empty unless --annotate-oncokb)
         "cancervar": {},     # chr:pos:ref:alt -> CancerVar annotation dict (empty unless --annotate-cancervar)
         "ichor_sol_pages": [],
+        "gene_cnv": {"chrom": [], "genes": [], "segments": [], "plots": []},
         "files": {"fastp": None, "igv_report": None, "focal_dup_igv": None,
                   "existing_dashboard": None, "listing": []},
     }
@@ -340,6 +345,25 @@ def collect_sample_context(sample_dir, build_time, subdir="",
                           "label": f"Solution page {n or '?'}",
                           "path": str(img.relative_to(effective_dir))})
     ctx["ichor_sol_pages"] = pages
+
+    # Gene-level CNV: the per-region tables and their plots.
+    gdir = effective_dir / "gene_cnv"
+    gene_cnv = {"chrom": [], "genes": [], "segments": [], "plots": []}
+    if gdir.is_dir():
+        def _rows(path):
+            if not path.exists():
+                return []
+            with open(path, newline="") as fh:
+                return list(csv.DictReader(fh, delimiter="\t"))
+        gene_cnv["chrom"] = _rows(gdir / f"{sample}.chrom_cnv.tsv")
+        gene_cnv["genes"] = _rows(gdir / f"{sample}.gene_cnv.tsv")
+        gene_cnv["segments"] = _rows(gdir / f"{sample}.gene_cnv_segments.tsv")
+        for img in sorted((gdir / "plots").glob("*.png")):
+            gene_cnv["plots"].append({
+                "region": img.stem.split(".", 1)[-1],
+                "path": str(img.relative_to(effective_dir)),
+            })
+    ctx["gene_cnv"] = gene_cnv
 
     igv_path = effective_dir / f"{sample}_igv_report.html"
     if igv_path.exists():

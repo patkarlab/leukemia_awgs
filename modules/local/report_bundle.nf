@@ -11,6 +11,12 @@ process REPORT_BUNDLE {
     // ignored in the script body.
     val  ready_signals
     path bundle_script
+    // The panel BEDs are staged rather than resolved relative to the script,
+    // because inside a work directory bin/ is staged alone with no assets/
+    // beside it. Without them the alignment slicing skips silently and the
+    // bundle ships without the reads its calls were made from.
+    path panel_bed_t2t
+    path panel_bed_hg38
     val  outdir
     val  bundle_name
 
@@ -28,6 +34,9 @@ process REPORT_BUNDLE {
         : "${workflow.launchDir}/${outdir}"
     """
     set -euo pipefail
+
+    export PANEL_BED_T2T="\$(readlink -f ${panel_bed_t2t})"
+    export PANEL_BED_HG38="\$(readlink -f ${panel_bed_hg38})"
 
     if [ ! -d "${results_dir}" ]; then
         echo "ERROR: results directory not found: ${results_dir}" >&2

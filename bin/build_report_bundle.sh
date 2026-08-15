@@ -63,7 +63,7 @@ fi
 # Derive the sample list from the annotated TSVs (most reliable anchor).
 mapfile -t SAMPLES < <(
   find "$RESULTS" \( -name '*.leukemia_annotated.tsv' -o -name '*.mm_annotated.tsv' \) -printf '%f\n' 2>/dev/null \
-    | sed 's/\.mm_annotated\.tsv$//' | sort -u
+    | sed -E 's/\.(leukemia|mm)_annotated\.tsv$//' | sort -u
 )
 if [[ ${#SAMPLES[@]} -eq 0 ]]; then
   mapfile -t SAMPLES < <(
@@ -225,9 +225,21 @@ print(f"  + {out.split('/')[-1]} ({len(rows)} duplication call(s))")
 PYDUP
   fi
 
+  # Gene-level CNV. Plots travel because a flat one is evidence too: it shows
+  # the locus was examined and found normal, which a report needs alongside the
+  # abnormal ones.
+  for f in $RESULTS/t2t/gene_cnv/${s}.*.tsv; do
+    [[ -f "$f" ]] && { mkdir -p "$d/gene_cnv"; cp -f "$f" "$d/gene_cnv/"; } || true
+  done
+  if [[ -d "$RESULTS/t2t/gene_cnv/${s}.gene_cnv_plots" ]]; then
+    mkdir -p "$d/gene_cnv/plots"
+    cp -f "$RESULTS/t2t/gene_cnv/${s}.gene_cnv_plots/"*.png "$d/gene_cnv/plots/" 2>/dev/null || true
+    echo "  + gene_cnv/plots/ ($(ls "$d/gene_cnv/plots" | wc -l) region plot(s))"
+  fi
+
   # Translocations
-  copy_first "$d/translocations" "${s}.leukemia_annotated.tsv"   "$s" \\
-      \( -name '*.leukemia_annotated.tsv' -o -name '*.mm_annotated.tsv' \)
+  copy_first "$d/translocations" "${s}.leukemia_annotated.tsv" "$s" \
+      -name '*.leukemia_annotated.tsv' -o -name '*.mm_annotated.tsv' 
   # The AL annotator names the dictionary hit known_pair; the variant browser
   # resolves columns by exact name and looks for known_mm_pair. Append the
   # alias rather than renaming, so both readers are satisfied from one file and

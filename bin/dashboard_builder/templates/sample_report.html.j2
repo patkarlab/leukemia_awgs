@@ -25,6 +25,7 @@
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-translocations" type="button" role="tab">Translocations</button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-flt3"      type="button" role="tab">Focal duplications</button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-cnv"       type="button" role="tab">Copy number</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-genecnv"   type="button" role="tab">Gene CNV</button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-bafloh"    type="button" role="tab">BAF / LOH</button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-igv"       type="button" role="tab">IGV</button></li>
       <li class="nav-item"><button class="nav-link"        data-bs-toggle="pill" data-bs-target="#tab-reporting" type="button" role="tab">Reporting <span id="reporting-count-badge" class="badge bg-secondary ms-1" style="display:none">0</span></button></li>
@@ -75,6 +76,117 @@
           <div id="filtered-browser"></div>
         {% else %}
           <div class="tspipe-empty">No filtered variants file found.</div>
+        {% endif %}
+      </div>
+
+      {# ===== Gene-level CNV tab =====
+           Three nested scales. Each plot carries an Include checkbox using the
+           same selection store as the CNV gallery, so a chosen region reaches
+           the Reporting tab with no special case there. #}
+      <div class="tab-pane fade" id="tab-genecnv" role="tabpanel">
+        {% set gc = ctx.gene_cnv %}
+        {% if not gc or not gc.genes %}
+          <div class="tspipe-empty">No gene-level copy-number output for this sample.</div>
+        {% else %}
+          <h4>Chromosome level</h4>
+          <p class="text-muted small">
+            Panel regions per chromosome, measured within this sample only, so
+            a copy-number change in another sample cannot reach it.
+          </p>
+          <div class="table-responsive mb-4">
+            <table class="table table-sm table-hover align-middle">
+              <thead class="table-light"><tr>
+                <th>Chromosome</th><th>Regions</th><th>log2</th>
+                <th>Copy number</th><th>Call</th><th>Baseline</th>
+              </tr></thead>
+              <tbody>
+              {% for r in gc.chrom %}
+                <tr{% if r.call != 'NEUTRAL' %} class="table-warning"{% endif %}>
+                  <td class="font-monospace">{{ r.chrom }}</td>
+                  <td>{{ r.n_regions }}</td>
+                  <td>{{ r.median_log2 }}</td>
+                  <td>{{ r.copy_number }}</td>
+                  <td><strong>{{ r.call }}</strong></td>
+                  <td class="small text-muted">{{ r.used_as_baseline }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <h4>Gene level</h4>
+          <p class="text-muted small">
+            Each region against its own chromosome, so a gene on a trisomic
+            chromosome is not reported as gained a second time.
+            <code>log2_vs_panel</code> is the same region against the whole
+            panel, for the other view.
+          </p>
+          <div class="table-responsive mb-4" style="max-height:420px;overflow:auto">
+            <table class="table table-sm table-hover align-middle">
+              <thead class="table-light"><tr>
+                <th>Region</th><th>Chrom</th><th>log2 vs chrom</th>
+                <th>log2 vs panel</th><th>Copy number</th><th>Call</th>
+              </tr></thead>
+              <tbody>
+              {% for r in gc.genes %}
+                <tr{% if r.call != 'NEUTRAL' %} class="table-warning"{% endif %}>
+                  <td><strong>{{ r.region }}</strong></td>
+                  <td class="font-monospace small">{{ r.chrom }}</td>
+                  <td>{{ r.median_log2 }}</td>
+                  <td class="text-muted">{{ r.log2_vs_panel }}</td>
+                  <td>{{ r.copy_number }}</td>
+                  <td>{{ r.call }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {% if gc.segments %}
+            <h4>Intragenic segments</h4>
+            <p class="text-muted small">
+              Focal departures from a gene's own baseline, restricted to
+              segments whose edges align to exon boundaries. Depth cannot
+              resolve copy number below about 8 kb at this read length and
+              coverage, so short calls are for review against the plot and the
+              alignment rather than for reporting.
+            </p>
+            <div class="table-responsive mb-4" style="max-height:320px;overflow:auto">
+              <table class="table table-sm table-hover align-middle">
+                <thead class="table-light"><tr>
+                  <th>Region</th><th>Position</th><th>Span</th><th>Exons</th>
+                  <th>log2</th><th>Copy number</th><th>Call</th>
+                </tr></thead>
+                <tbody>
+                {% for r in gc.segments %}
+                  <tr>
+                    <td><strong>{{ r.region }}</strong></td>
+                    <td class="font-monospace small">{{ r.chrom }}:{{ r.start }}</td>
+                    <td>{{ r.span_bp }} bp</td>
+                    <td>{{ r.exons or '&mdash;' | safe }}</td>
+                    <td>{{ r.median_log2 }}</td>
+                    <td>{{ r.copy_number }}</td>
+                    <td>{{ r.call }}</td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+
+          {% if gc.plots %}
+            <h4>Per-region depth</h4>
+            <p class="text-muted small">
+              One plot per panel region, exons marked and numbered along the
+              bottom. A flat plot is evidence that the locus was examined and
+              found normal. Tick Include to carry a plot into the Reporting tab.
+            </p>
+            <div class="row g-3">
+              {% for pl in gc.plots %}
+                {{ macros.render_cnv_plot_card('gene_cnv::' ~ pl.region, pl.region, pl.path, 'col-md-6 col-xl-4') }}
+              {% endfor %}
+            </div>
+          {% endif %}
         {% endif %}
       </div>
 

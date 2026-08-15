@@ -19,6 +19,7 @@ include { AUGMENT_SV_SUPPORT   } from '../../modules/local/augment_sv_support.nf
 include { MERGE_TRANSLOCATIONS } from '../../modules/local/merge_translocations.nf'
 include { QC_ONTARGET          } from '../../modules/local/qc_ontarget.nf'
 include { FOCAL_INTRAGENIC_DUP } from '../../modules/local/focal_intragenic_dup.nf'
+include { GENE_CNV             } from '../../modules/local/gene_cnv.nf'
 include { panelPath            } from './utils.nf'
 include { focalTargets         } from './utils.nf'
 
@@ -53,6 +54,23 @@ workflow T2T_TRACK {
             intragenic_in,
             file(params.focal_dup_exon_bed_t2t ?: "${projectDir}/assets/NO_FILE")
         )
+    }
+
+    // Gene-level CNV. Every other sample on the same panel is handed in as a
+    // reference; cross() then drops the sample from its own reference set.
+    if (!params.skip_gene_cnv) {
+        ch_pool = t2t_bam_bai.map { meta, bam, bai -> tuple(meta.panel, meta.id, bam, bai) }
+        ch_gene_cnv = with_bed
+            .map { meta, bam, bai, bed -> tuple(meta.panel, [meta, bam, bai, bed]) }
+            .combine(ch_pool.map { p, id, b, i -> tuple(p, [id, b, i]) }, by: 0)
+            .map { _p, self, other -> tuple(self[0], self[1], self[2], self[3],
+                                            other[0], other[1], other[2]) }
+            .filter { meta, _b, _i, _bed, oid, _ob, _oi -> oid != meta.id }
+            .groupTuple(by: [0, 1, 2, 3])
+            .map { meta, bam, bai, bed, _oids, obams, obais ->
+                tuple(meta, bam, bai, bed, obams, obais)
+            }
+        GENE_CNV(ch_gene_cnv, file(params.gene_cnv_gff ?: "${projectDir}/assets/NO_FILE"))
     }
 
     if (!params.skip_sv_calling) {
@@ -100,6 +118,7 @@ workflow T2T_TRACK {
     qc_coverage   = params.skip_qc         ? Channel.empty() : QC_ONTARGET.out.coverage
     qc_summary    = params.skip_qc         ? Channel.empty() : QC_ONTARGET.out.summary
     focal_dup     = params.skip_focal_dup   ? Channel.empty() : FOCAL_INTRAGENIC_DUP.out.tsv
+    gene_cnv      = params.skip_gene_cnv    ? Channel.empty() : GENE_CNV.out.genes
     sniffles_vcf  = params.skip_sv_calling ? Channel.empty() : SNIFFLES.out.vcf
     cutesv_vcf    = params.skip_sv_calling ? Channel.empty() : CUTESV.out.vcf
     severus_outdir= params.skip_sv_calling ? Channel.empty() : SEVERUS.out.outdir
