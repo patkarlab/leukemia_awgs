@@ -23,6 +23,7 @@ process ANNOTATE_AL_FUSIONS {
         --anchors      ${anchors} \\
         --panel        ${meta.panel} \\
         --sample       ${meta.id} \\
+        --excluded-junctions ${excluded_junctions} \\
         --output       ${meta.id}.al_fusions.tsv
 
     cat <<-END_VERSIONS > versions.yml
