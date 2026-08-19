@@ -286,8 +286,30 @@ def spanning_depth(bam: "pysam.AlignmentFile", chrom: str, pos: int,
     return n
 
 
+def required_identity(length: int, floor: float) -> float:
+    """Tandem identity a duplication of this length must reach.
+
+    A flat threshold is wrong because chance agreement depends on length. At
+    0.80 identity a 6 bp duplication needs five of six bases to match the
+    adjacent reference, which occurs by chance in roughly one candidate in two
+    hundred; across a 97 kb gene at 30x that is many spurious calls. The same
+    0.80 over 63 bp is unreachable by chance.
+
+    FLT3-ITDs are real down to about 3 bp, so the length floor must be low.
+    The identity requirement rises to compensate: near-perfect below 30 bp,
+    exact below 12, where nothing short of an exact tandem repeat is
+    distinguishable from a basecalling indel.
+    """
+    if length < 12:
+        return 1.0
+    if length < 30:
+        return max(floor, 0.95)
+    return floor
+
+
 def grade(length: int, support: int, spanning: int, hotspot: str,
-          identity: float, have_hotspot_bed: bool) -> Tuple[str, str]:
+          identity: float, have_hotspot_bed: bool,
+          min_identity: float = 0.80) -> Tuple[str, str]:
     """Grade a verified duplication, returning (confidence, reason).
 
     Position dominates. On real AML data at 20 h, a FLT3 scan over the whole
@@ -324,12 +346,19 @@ def grade(length: int, support: int, spanning: int, hotspot: str,
         reasons.append("out of frame")
     if spanning and support / spanning < 0.05:
         reasons.append("allelic ratio below 0.05")
-    if identity < 0.80:
-        reasons.append(f"tandem identity {identity:.2f}")
+    need = required_identity(length, min_identity)
+    if identity < need:
+        reasons.append(f"tandem identity {identity:.2f} below {need:.2f} "
+                       f"required at {length} bp")
+    # A short duplication outside its hotspot cannot be told from a
+    # basecalling indel by any measure available here.
+    if length < 30 and have_hotspot_bed and not hotspot:
+        reasons.append("short and outside the annotated hotspot")
 
     if pos_ok is False:
         return "low", "; ".join(reasons)
-    if pos_ok is True and length % 3 == 0 and identity >= 0.80:
+    if pos_ok is True and length % 3 == 0 and identity >= need \
+            and not (length < 30 and not hotspot):
         return "high", "; ".join(reasons)
     return "moderate", "; ".join(reasons)
 
@@ -435,7 +464,7 @@ def main() -> int:
         ratio = (c.n_support / depth) if depth else 0.0
         hs = hotspot_label(hotspots, chrom, c.ref_pos)
         conf, why = grade(c.length, c.n_support, depth, hs, ident,
-                          bool(hotspots))
+                          bool(hotspots), args.min_tandem_identity)
         if args.hotspot_only and not hs:
             continue
         rows.append({

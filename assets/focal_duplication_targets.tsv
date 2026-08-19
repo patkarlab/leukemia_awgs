@@ -1,5 +1,6 @@
 gene	disease	reference	mode	min_len	max_len	min_support	label	notes
-FLT3	BOTH	hg38	insertion	15	500	3	FLT3-ITD	ITD length and allelic ratio are both ELN 2022 risk inputs; general-purpose SNV callers split these into multiple small indels
+FLT3	BOTH	hg38	insertion	12	500	3	FLT3-ITD	ITD length and allelic ratio are both ELN 2022 risk inputs; general-purpose SNV callers split these into multiple small indels; ITDs run from about 3 bp upward, but below 12 bp a tandem match to adjacent reference occurs often enough by chance that the calls cannot be told from basecalling indels: on one sample a 6 bp floor produced 17 verified duplications against 2 at 12 bp, several carrying more read support than the real ITD. Tandem identity also scales with length
 UBTF	AML	hg38	insertion	20	300	3	UBTF-TD	exon 13 tandem duplication producing a HOXA/HOXB expression signature; no fusion partner exists
 KMT2A	BOTH	t2t	split_read	1000	100000	2	KMT2A-PTD	classically exons 2-8 or 2-10; invisible to KMT2A break-apart FISH because both breakpoints are intragenic
 MYB	ALL	t2t	split_read	500	200000	2	MYB-dup	intragenic duplication at 6q23 as an alternative to TRB::MYB
+PAX5	ALL	t2t	split_read	1000	60000	2	PAX5-amp	intragenic amplification, usually exons 2-5, defining for the PAX5amp subtype of B-ALL; distinct from PAX5alt rearrangement and from PAX5 P80R, and invisible to a break-apart probe because both breakpoints lie inside the gene

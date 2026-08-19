@@ -1,0 +1,9 @@
+sample	finding	kind	8h	8h_evidence	16h	16h_evidence	20h	20h_evidence	24h	24h_evidence	32h	32h_evidence
+BC13	NPM1 frameshift	variant	yes	VAF 50.00%, 10/20 reads	yes	VAF 41.67%, 15/36 reads	yes	VAF 36.59%, 15/41 reads	yes	VAF 36.00%, 18/50 reads	yes	VAF 33.33%, 18/54 reads
+BC13	FLT3 p.Val592Ala	variant	yes	VAF 50.00%, 6/12 reads	yes	VAF 46.67%, 14/30 reads	yes	VAF 44.44%, 16/36 reads	yes	VAF 40.00%, 16/40 reads	yes	VAF 36.00%, 18/50 reads
+BC13	no hotspot FLT3-ITD	absent_dup	yes	1 call(s), none graded	yes	1 call(s), none graded	yes	1 call(s), none graded	yes	2 call(s), none graded	yes	3 call(s), none graded
+BC14	UBTF-TD exon 13	dup	yes	53 bp, 3/11 reads, UBTF_exon13_TD, moderate	yes	52 bp, 6/22 reads, UBTF_exon13_TD, moderate	yes	51 bp, 7/27 reads, UBTF_exon13_TD, moderate	yes	51 bp, 8/31 reads, UBTF_exon13_TD, moderate	yes	51 bp, 11/41 reads, UBTF_exon13_TD, moderate
+BC14	FLT3-ITD, juxtamembrane	dup	yes	63 bp, 6/11 reads, FLT3_JM_exon14_15, high	yes	63 bp, 16/22 reads, FLT3_JM_exon14_15, high	yes	63 bp, 18/27 reads, FLT3_JM_exon14_15, high	yes	63 bp, 18/28 reads, FLT3_JM_exon14_15, high	yes	63 bp, 22/35 reads, FLT3_JM_exon14_15, high
+BC15	DEK::NUP214 t(6;9)	fusion	yes	2 reads, 2 caller(s), named t(6;9)(p22.3;q34.1)	yes	4 reads, 2 caller(s), named t(6;9)(p22.3;q34.1)	yes	6 reads, 2 caller(s), named t(6;9)(p22.3;q34.1)	yes	6 reads, 2 caller(s), named t(6;9)(p22.3;q34.1)	yes	7 reads, 2 caller(s), named t(6;9)(p22.3;q34.1)
+BC15	FLT3 p.Asn841Ile	variant	no		yes	VAF 43.75%, 7/16 reads	yes	VAF 45.00%, 9/20 reads	yes	VAF 46.15%, 12/26 reads	yes	VAF 48.39%, 15/31 reads
+BC15	no hotspot FLT3-ITD	absent_dup	yes	1 call(s), none graded	yes	5 call(s), none graded	yes	5 call(s), none graded	yes	5 call(s), none graded	yes	5 call(s), none graded

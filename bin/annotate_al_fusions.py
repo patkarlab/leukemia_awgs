@@ -562,16 +562,6 @@ def main() -> int:
     ap.add_argument("--excluded-tol", type=int, default=50,
                     help="Bases either breakpoint may differ from a listed "
                          "artefact and still match [50].")
-    ap.add_argument("--excluded-junctions", default=None,
-                    help="TSV of junctions to drop, each observed at "
-                         "base-identical coordinates in unrelated patients. "
-                         "Dictionary-named pairs and defining-tier entities "
-                         "are never dropped.")
-    ap.add_argument("--excluded-junctions", default=None, type=Path,
-                    help="TSV of junctions to drop, each observed at "
-                         "base-identical coordinates in unrelated patients. "
-                         "Dictionary-named pairs and defining-tier entities "
-                         "are never dropped.")
     ap.add_argument("--panel", required=True, choices=["AML", "ALL"])
     ap.add_argument("--sample", required=True)
     ap.add_argument("--output", required=True, type=Path)

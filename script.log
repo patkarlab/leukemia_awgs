@@ -1,30 +1,40 @@
 N E X T F L O W  ~  version 25.10.4
-Launching `main.nf` [loquacious_hirsch] DSL2 - revision: f01c789156
+Launching `main.nf` [peaceful_darwin] DSL2 - revision: f01c789156
 WARN: Config setting `docker.userEmulation` is not supported anymore
-[12/31ab4b] Submitted process > AL_AWGS:MERGE_MINKNOW (BC13_16hr)
-[f8/ef1500] Cached process > AL_AWGS:MERGE_MINKNOW (BC14_32hr)
-[ee/59e99e] Cached process > AL_AWGS:MERGE_MINKNOW (BC14_24hr)
-[32/ff1aa0] Cached process > AL_AWGS:MERGE_MINKNOW (BC15_32hr)
-[9d/347fa2] Cached process > AL_AWGS:MERGE_MINKNOW (BC13_32hr)
-[b6/ce3e9c] Submitted process > AL_AWGS:MERGE_MINKNOW (BC15_16hr)
-[96/781766] Submitted process > AL_AWGS:MERGE_MINKNOW (BC13_8hr)
-[02/621b94] Submitted process > AL_AWGS:MERGE_MINKNOW (BC14_8hr)
-[48/eb5ed1] Submitted process > AL_AWGS:MERGE_MINKNOW (BC14_16hr)
-[ef/54db16] Submitted process > AL_AWGS:MERGE_MINKNOW (BC13_24hr)
-[fe/92dc8f] Submitted process > AL_AWGS:MERGE_MINKNOW (BC15_8hr)
-[7c/d2a09f] Submitted process > AL_AWGS:MERGE_MINKNOW (BC15_24hr)
-[2c/f2df53] Submitted process > AL_AWGS:T2T_TRACK:REALIGN_T2T (BC13_32hr)
-
-============================================================
-leukemia_awgs run complete
-============================================================
-status:   FAILED
-runName:  loquacious_hirsch
-duration: 12m 10s
-outdir:   results_32hr
-workDir:  /goast/leukemia_awgs/work
-
-WARN: Killing running tasks (1)
-ERROR ~ Pipeline failed: SIGTERM
-
- -- Check '.nextflow.log' file for details
+[b1/0694af] Cached process > AL_AWGS:MERGE_MINKNOW (25NGS1254_8hr)
+[bb/21cfb4] Cached process > AL_AWGS:MERGE_MINKNOW (25NGS0387_8hr)
+[55/e20fa5] Cached process > AL_AWGS:MERGE_MINKNOW (25NGS0111_8hr)
+[78/af3723] Cached process > AL_AWGS:HG38_TRACK:REALIGN_HG38 (25NGS0111_8hr)
+[51/286382] Cached process > AL_AWGS:T2T_TRACK:REALIGN_T2T (25NGS0111_8hr)
+[eb/3c635d] Cached process > AL_AWGS:HG38_TRACK:REALIGN_HG38 (25NGS1254_8hr)
+[3c/1ec425] Cached process > AL_AWGS:HG38_TRACK:REALIGN_HG38 (25NGS0387_8hr)
+[ca/3bc1d8] Cached process > AL_AWGS:T2T_TRACK:REALIGN_T2T (25NGS1254_8hr)
+[cc/15b0e1] Cached process > AL_AWGS:T2T_TRACK:REALIGN_T2T (25NGS0387_8hr)
+[96/301b03] Cached process > AL_AWGS:T2T_TRACK:SEVERUS (25NGS1254_8hr)
+[9c/23dba2] Cached process > AL_AWGS:T2T_TRACK:CUTESV (25NGS1254_8hr)
+[61/9237ac] Cached process > AL_AWGS:T2T_TRACK:SNIFFLES (25NGS1254_8hr)
+[2b/9717d8] Submitted process > AL_AWGS:HG38_TRACK:CLAIR3_PHASED (25NGS1254_8hr)
+[b4/614a22] Cached process > AL_AWGS:HG38_TRACK:CLAIRS_TO (25NGS1254_8hr)
+[b4/11eb14] Cached process > AL_AWGS:HG38_TRACK:CLAIRS_TO (25NGS0387_8hr)
+[77/c9ba08] Cached process > AL_AWGS:HG38_TRACK:CLAIRS_TO (25NGS0111_8hr)
+[5d/68a275] Cached process > AL_AWGS:HG38_TRACK:ICHORCNA (25NGS1254_8hr)
+[0a/79fac9] Cached process > AL_AWGS:T2T_TRACK:SEVERUS (25NGS0387_8hr)
+[d5/52f107] Cached process > AL_AWGS:T2T_TRACK:SEVERUS (25NGS0111_8hr)
+[48/265cd9] Cached process > AL_AWGS:HG38_TRACK:ICHORCNA (25NGS0387_8hr)
+[26/39c41b] Cached process > AL_AWGS:T2T_TRACK:SNIFFLES (25NGS0387_8hr)
+[db/1fd06e] Cached process > AL_AWGS:T2T_TRACK:CUTESV (25NGS0387_8hr)
+[0d/5abde3] Cached process > AL_AWGS:T2T_TRACK:CUTESV (25NGS0111_8hr)
+[11/0126c9] Cached process > AL_AWGS:HG38_TRACK:ICHORCNA (25NGS0111_8hr)
+[ed/fc66d7] Cached process > AL_AWGS:T2T_TRACK:SNIFFLES (25NGS0111_8hr)
+[5b/29ccfa] Cached process > AL_AWGS:T2T_TRACK:SURVIVOR_MERGE (25NGS0387_8hr)
+[a5/37f9fa] Cached process > AL_AWGS:T2T_TRACK:SURVIVOR_MERGE (25NGS0111_8hr)
+[29/3dddf0] Cached process > AL_AWGS:T2T_TRACK:FOCAL_INTRAGENIC_DUP (25NGS1254_8hr KMT2A-PTD)
+[ca/159a4d] Cached process > AL_AWGS:T2T_TRACK:FOCAL_INTRAGENIC_DUP (25NGS0111_8hr KMT2A-PTD)
+[7e/5ca42c] Cached process > AL_AWGS:T2T_TRACK:QC_ONTARGET (25NGS0111_8hr)
+[72/76eaa3] Cached process > AL_AWGS:T2T_TRACK:FOCAL_INTRAGENIC_DUP (25NGS0387_8hr KMT2A-PTD)
+[b4/b23e40] Cached process > AL_AWGS:T2T_TRACK:QC_ONTARGET (25NGS1254_8hr)
+[80/536c4f] Cached process > AL_AWGS:T2T_TRACK:SURVIVOR_MERGE (25NGS1254_8hr)
+[44/6afae1] Cached process > AL_AWGS:T2T_TRACK:QC_ONTARGET (25NGS0387_8hr)
+[ce/62afb8] Cached process > AL_AWGS:T2T_TRACK:GENE_CNV (25NGS1254_8hr [AML])
+[a6/6a704b] Cached process > AL_AWGS:T2T_TRACK:GENE_CNV (25NGS0387_8hr [AML])
+[bd/e56049] Cached process > AL_AWGS:T2T_TRACK:GENE_CNV (25NGS0111_8hr [AML])
