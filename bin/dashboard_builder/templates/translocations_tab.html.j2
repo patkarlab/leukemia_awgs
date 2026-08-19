@@ -82,6 +82,23 @@
       {% endif %}
     </div>
 
+    {# Supporting-read threshold. The variants tab offers the same control on
+       alt count, and the reason is the same: an ensemble at low depth emits a
+       long tail of two-read calls, and a reader wants to raise the floor
+       without editing the table. Discrete steps rather than a slider, because
+       the useful thresholds are few and clinical convention names them. #}
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+      <span class="small text-muted">Minimum supporting reads</span>
+      <div class="btn-group btn-group-sm" role="group" id="tx-support-filter">
+        {% for n in [0, 2, 3, 4, 5, 6, 10] %}
+          <button type="button"
+                  class="btn btn-outline-secondary{{ ' active' if n == 0 }}"
+                  data-tx-min="{{ n }}">{{ 'all' if n == 0 else '&ge;' ~ n }}</button>
+        {% endfor %}
+      </div>
+      <span class="small text-muted ms-2" id="tx-support-count"></span>
+    </div>
+
     <div class="table-responsive">
       <table id="tx-table" class="table table-sm table-striped table-hover align-middle w-100">
         <thead class="table-light">
@@ -189,6 +206,16 @@
         if (!window.jQuery || !jQuery.fn || !jQuery.fn.DataTable) { return false; }
         var $table = jQuery('#tx-table');
         if (!$table.length || jQuery.fn.DataTable.isDataTable($table)) { return true; }
+
+        // Column index of the supporting-read count, resolved from the header
+        // rather than assumed: the bundle step appends an alias column, which
+        // shifts every position after it.
+        var supportCol = -1;
+        $table.find('thead th').each(function (i) {
+          if (jQuery(this).text().trim().toLowerCase().indexOf('supporting') === 0) {
+            supportCol = i;
+          }
+        });
 
         var config = {
           paging: false,

@@ -122,23 +122,23 @@
     {% endif %}
 
   {% endif %}
-</div>
 
-{# All-solution pages, rasterised by the bundle script. Rendered with the same
-   card macro the rest of the CNV gallery uses, so the Include checkbox and the
-   Reporting tab need no special case. #}
-{% if ctx.ichor_sol_pages %}
-  <div class="mt-4">
-    <h6 class="text-muted">All fitted solutions</h6>
-    <p class="small text-muted">
-      Each page is one ploidy and normal-fraction combination. Where the
-      log-likelihoods are close the automatic pick is arbitrary, so the page
-      chosen here is the one that reaches the report.
-    </p>
-    <div class="row g-3">
-      {% for pg in ctx.ichor_sol_pages %}
-        {{ macros.render_cnv_plot_card('ichor_sol::' ~ pg.name, pg.label, pg.path, 'col-md-6 col-xl-4') }}
-      {% endfor %}
+  {# All-solution pages, rasterised by the bundle script. Rendered with the same
+     card macro the rest of the CNV gallery uses, so the Include checkbox and the
+     Reporting tab need no special case. #}
+  {% if ctx.ichor_sol_pages %}
+    <div class="mt-4">
+      <h6 class="text-muted">All fitted solutions</h6>
+      <p class="small text-muted">
+        Each page is one ploidy and normal-fraction combination. Where the
+        log-likelihoods are close the automatic pick is arbitrary, so the page
+        chosen here is the one that reaches the report.
+      </p>
+      <div class="row g-3">
+        {% for pg in ctx.ichor_sol_pages %}
+          {{ macros.render_cnv_plot_card('ichor_sol::' ~ pg.name, pg.label, pg.path, 'col-md-6 col-xl-4') }}
+        {% endfor %}
+      </div>
     </div>
-  </div>
-{% endif %}
+  {% endif %}
+</div>

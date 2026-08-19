@@ -104,18 +104,21 @@ def _find_table(effective_dir, sample):
     recursive search so the parser also works when pointed straight at a
     results tree rather than a report bundle.
     """
-    direct = os.path.join(
-        effective_dir, "translocations", "%s.mm_annotated.tsv" % sample
-    )
-    if os.path.isfile(direct):
-        return direct
+    # Both names are accepted: the acute-leukaemia pipeline writes
+    # leukemia_annotated, the myeloma one mm_annotated, and a bundle built
+    # before the rename still has the old name.
+    names = ["%s.leukemia_annotated.tsv" % sample, "%s.mm_annotated.tsv" % sample]
+    for n in names:
+        direct = os.path.join(effective_dir, "translocations", n)
+        if os.path.isfile(direct):
+            return direct
 
     # Bound to the sample identifier. There is deliberately no "any annotated
     # table" fallback: a directory that does not hold this sample's file must
     # render empty rather than silently show another sample's rearrangements.
     for root, _dirs, files in os.walk(effective_dir):
         for name in files:
-            if name == "%s.mm_annotated.tsv" % sample:
+            if name in names:
                 return os.path.join(root, name)
     return None
 
@@ -269,7 +272,9 @@ def parse(effective_dir, sample, igv_flank=5000):
 
     path = _find_table(effective_dir, sample)
     if not path:
-        return not_found("no %s.mm_annotated.tsv under this directory" % sample)
+        return not_found(
+            "no %s.leukemia_annotated.tsv or %s.mm_annotated.tsv under this "
+            "directory" % (sample, sample))
 
     with open(path, newline="") as handle:
         reader = csv.reader(handle, delimiter="\t")

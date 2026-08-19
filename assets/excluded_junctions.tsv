@@ -1,0 +1,36 @@
+# Junctions excluded from the annotated SV table.
+#
+# Each row was observed at base-identical coordinates in unrelated patients,
+# across five sequencing depths from 8 to 32 hours. Somatic breakpoints do not
+# recur to the nucleotide between individuals: repair at a real junction is
+# imprecise, so two patients sharing a rearrangement share the intron, not the
+# base. Identity to within a few bases is a mapping or reference artefact.
+#
+# Recurrence alone is NOT the criterion, and must not become one. Acute
+# leukaemia's defining events are recurrent by definition: KMT2A, MECOM and
+# NUP98 rearrangements are expected in multiple patients and are findings, not
+# noise. What is excluded here is coordinate identity, which is a different
+# claim entirely.
+#
+# Three of these sit on panel anchor genes — MECOM, RARB and MYC — where the
+# anchor rule would otherwise make every artefact reportable. That is the
+# reason the list exists.
+#
+# A row whose dictionary entry names it, or whose tier is defining, is never
+# excluded regardless of what matches here. The override is in
+# annotate_al_fusions.py and is not configurable.
+#
+# Positions are 1-based, on T2T-CHM13v2.0. TOLERANCE is the window either
+# side, in bp, within which a call is treated as the same artefact. Both
+# orientations are matched, so a reciprocal mate needs no separate row.
+#
+# CHROM_A	POS_A	CHROM_B	POS_B	TOLERANCE	SEEN_IN	NOTE
+chr7	102681694	chr11	86046498	200	BC13,BC14,BC15	PICALM 5-prime region; present in every sample at every depth
+chr1	210311014	chr2	238145083	200	BC13,BC14,BC15	LRRFIP1
+chr2	238145084	chr8	65949373	200	BC13,BC15	LRRFIP1, second partner one base from the first
+chr3	172336143	chr7	98843219	200	BC13,BC15	MECOM anchor; a real MECOM event is inv(3)/t(3;3), not this
+chr3	24950601	chrX	60599396	200	BC14,BC15	RARB; on-panel for APL, so a spurious call is costly
+chr8	128649020	chr3	114276053	200	BC13,BC14	MYC; identical bases in two patients, so not an enhancer hijack
+chr8	48045734	chrX	118117697	200	BC13,BC14	SEPTIN6
+chr5	135144977	chr1	150722938	200	BC13,BC14	JADE2
+chr3	161408065	chr4	77465203	200	BC14,BC15	MLF1

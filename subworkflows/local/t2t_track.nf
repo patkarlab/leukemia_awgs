@@ -94,7 +94,8 @@ workflow T2T_TRACK {
                 },
                 file(params.cytoband_bed_t2t,   checkIfExists: true),
                 file(params.al_fusion_dict,     checkIfExists: true),
-                file(params.al_fusion_anchors,  checkIfExists: true)
+                file(params.al_fusion_anchors,  checkIfExists: true),
+                file(params.al_excluded_junctions ?: "${projectDir}/assets/NO_FILE")
             )
 
             // Layer real per-caller read support onto the annotated table,

@@ -329,9 +329,18 @@ def collect_sample_context(sample_dir, build_time, subdir="",
     # the duplications are called on a different table and reviewed on their own
     # terms: what matters is whether the reads at that position actually carry a
     # tandem duplication, or whether the aligner put them there.
-    fd_igv = effective_dir / f"{sample}_focal_dup_igv.html"
-    if fd_igv.exists():
-        ctx["files"]["focal_dup_igv"] = fd_igv.name
+    # The bundle files IGV pages by class under igv/<class>/, so the sample
+    # root is the wrong place to look.
+    fd_igv = None
+    for cand in (effective_dir / "igv" / "focal_dup",
+                 effective_dir / "focal_dup", effective_dir):
+        if cand.is_dir():
+            hit = sorted(cand.glob("*focal_dup*.html"))
+            if hit:
+                fd_igv = hit[0]
+                break
+    if fd_igv is not None:
+        ctx["files"]["focal_dup_igv"] = str(fd_igv.relative_to(effective_dir))
 
     # Rasterised ichorCNA solution pages, if the bundle produced them.
     sol_dir = effective_dir / "cnv" / "all_sols"

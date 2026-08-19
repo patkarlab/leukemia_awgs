@@ -495,6 +495,57 @@ COLUMNS = [
 ]
 
 
+def load_excluded_junctions(path):
+    """Junctions to drop, keyed by chromosome pair, both orientations stored.
+
+    Each entry was observed at base-identical coordinates in unrelated
+    patients. Somatic breakpoints do not recur to the nucleotide across
+    individuals: repair at a real junction is imprecise, so two patients
+    sharing a rearrangement share the intron, not the base.
+
+    Recurrence alone is not the criterion. Acute leukaemia's defining events
+    are recurrent by definition, and a KMT2A or MECOM rearrangement in several
+    patients is a finding. Coordinate identity is a different claim.
+    """
+    out = {}
+    if not path or not Path(str(path)).is_file():
+        return out
+    with open(path) as fh:
+        for line in fh:
+            if not line.strip() or line.startswith("#"):
+                continue
+            f = line.rstrip("\n").split("\t")
+            if len(f) < 5:
+                continue
+            ca, pa, cb, pb, tol = f[0], int(f[1]), f[2], int(f[3]), int(f[4])
+            note = f[6] if len(f) > 6 else ""
+            out.setdefault((ca, cb), []).append((pa, pb, tol, note))
+            out.setdefault((cb, ca), []).append((pb, pa, tol, note))
+    return out
+
+
+def excluded_reason(excl, row):
+    """Why this junction is excluded, or None.
+
+    A dictionary-named pair or a defining-tier entity is never excluded: the
+    list is a noise filter, and an entity the dictionary recognises has cleared
+    a higher bar than coordinate recurrence can overturn.
+    """
+    if not excl:
+        return None
+    if str(row.get("known_pair") or "").strip():
+        return None
+    if str(row.get("tier") or "").strip().lower() == "defining":
+        return None
+    for pa, pb, tol, note in excl.get((row.get("chrom_a"), row.get("chrom_b")), []):
+        try:
+            if abs(int(row["pos_a"]) - pa) <= tol and abs(int(row["pos_b"]) - pb) <= tol:
+                return note or "base-identical junction seen in unrelated patients"
+        except (TypeError, ValueError, KeyError):
+            continue
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -503,6 +554,24 @@ def main() -> int:
     ap.add_argument("--cytoband-bed", required=True, type=Path)
     ap.add_argument("--dictionary", required=True, type=Path)
     ap.add_argument("--anchors", required=True, type=Path)
+    ap.add_argument("--excluded-junctions", default=None,
+                    help="TSV of recurrent artefact junctions to drop. Matched "
+                         "on both breakpoints within --excluded-tol, in either "
+                         "orientation. A dictionary-named pair is never "
+                         "dropped.")
+    ap.add_argument("--excluded-tol", type=int, default=50,
+                    help="Bases either breakpoint may differ from a listed "
+                         "artefact and still match [50].")
+    ap.add_argument("--excluded-junctions", default=None,
+                    help="TSV of junctions to drop, each observed at "
+                         "base-identical coordinates in unrelated patients. "
+                         "Dictionary-named pairs and defining-tier entities "
+                         "are never dropped.")
+    ap.add_argument("--excluded-junctions", default=None, type=Path,
+                    help="TSV of junctions to drop, each observed at "
+                         "base-identical coordinates in unrelated patients. "
+                         "Dictionary-named pairs and defining-tier entities "
+                         "are never dropped.")
     ap.add_argument("--panel", required=True, choices=["AML", "ALL"])
     ap.add_argument("--sample", required=True)
     ap.add_argument("--output", required=True, type=Path)
@@ -515,14 +584,37 @@ def main() -> int:
     anchors = load_anchors(args.anchors, args.panel)
     cytobands = load_cytobands(args.cytoband_bed)
     records = parse_vcf(args.vcf)
+    excl = load_excluded_junctions(args.excluded_junctions)
+    if excl:
+        sys.stderr.write(
+            f"excluded junctions: {len(set(k[0] for k in excl))} chromosome "
+            f"pair(s) from {args.excluded_junctions}\n")
+
     rows = annotate(records, panel, dictionary, anchors, args.sample,
                     cytobands, args.panel)
 
     with open(args.output, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=COLUMNS, delimiter="\t",
                            lineterminator="\n", extrasaction="ignore")
+        dropped = []
+        keep = []
+        for r in rows:
+            why = excluded_reason(excl, r)
+            (dropped if why else keep).append((r, why))
         w.writeheader()
-        w.writerows(rows)
+        w.writerows([r for r, _ in keep])
+
+    if dropped:
+        sys.stderr.write(f"dropped {len(dropped)} junction(s) on the exclusion list:\n")
+        seen = set()
+        for r, why in dropped:
+            k = (r.get("chrom_a"), r.get("pos_a"), r.get("chrom_b"), r.get("pos_b"))
+            if k in seen:
+                continue
+            seen.add(k)
+            sys.stderr.write(
+                f"  {r.get('gene_a','')} x {r.get('gene_b','')}  "
+                f"{k[0]}:{k[1]} x {k[2]}:{k[3]}  — {why}\n")
 
     n_report = sum(1 for r in rows if r["reportable"] == "yes")
     n_named = sum(1 for r in rows if r["known_pair"])
