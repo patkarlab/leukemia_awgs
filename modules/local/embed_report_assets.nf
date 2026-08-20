@@ -27,7 +27,9 @@ process EMBED_REPORT_ASSETS {
     task.ext.when == null || task.ext.when
 
     script:
-    def embed_igv = params.report_embed_igv ?: 0
+    def embed_raw = params.report_embed_igv
+    def embed_igv = (embed_raw instanceof Boolean) ? (embed_raw ? 1000 : 0)
+                                                   : ((embed_raw ?: 0) as int)
     def igv_arg   = embed_igv > 0 ? "--embed-igv ${embed_igv}" : ""
     """
     set -euo pipefail
