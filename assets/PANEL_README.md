@@ -165,6 +165,18 @@ T2T-assembled segmental duplication may carry a similarly inflated model. The
 
 ### chrY PAR1 window corrected on the ALL T2T panel
 
+**Superseded (2026-08-20): the chrY interval was removed from the ALL T2T
+design entirely.** T2T's unmasked chrY PAR1 gave the aligner a second,
+near-identical copy of the region; SV callers emitted chrX<->chrY junctions
+between the paralogues, which the fusion dictionary named 'PAR1 deletion'
+at defining tier (five such calls across two validation samples). Removed
+from ALL_panel_targets.tsv, NAMED_REGIONS, extra_regions_ALL_t2t.bed and
+both T2T BEDs (128 -> 127 intervals). The chrX interval is unchanged and
+its label tokenises to {PAR1, CRLF2, P2RY8}, so P2RY8::CRLF2 remains fully
+nameable, with the dictionary's min_span_bp guarding interval-internal
+noise. The hg38 panel keeps its chrY interval: PAR1 is masked on chrY in
+hg38, so it is inert there.
+
 The design specifies `PAR1_CRLF2_P2RY8_Y` as a 500 kb interval and the hg38
 BED carried it, but the T2T BEDs held a 175 kb P2RY8 gene-body region instead.
 Because adaptive sampling runs against T2T, that 325 kb was never enriched:
@@ -185,6 +197,11 @@ supplied through `assets/extra_regions_ALL_t2t.bed`.
 rebuild of the ALL panel will reproduce that and needs the same repair until
 named intervals are matched exactly. Token matching is correct for compound
 labels like `TAL1/STIL` and wrong for X/Y paralogous intervals.
+
+**Resolved by removal (2026-08-20):** with `PAR1_CRLF2_P2RY8_Y` deleted from
+the design, no Y-side paralogous label remains to collide. The token-matching
+behaviour itself is unchanged and would recur if an X/Y interval pair were
+ever reintroduced.
 
 **Two spans still exceed their hg38 counterparts.** `ZNF362` at 1.91x is
 unexplained and worth checking against the T2T annotation the way RANBP2 was.

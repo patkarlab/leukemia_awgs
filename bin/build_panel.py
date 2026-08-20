@@ -74,7 +74,6 @@ NAMED_REGIONS = {
     "TRB_locus":              ("chr7",  142290000, 142820000),
     "TRG_locus":              ("chr7",   38230000,  38400000),
     "PAR1_CRLF2_P2RY8":       ("chrX",    1150000,   1650000),
-    "PAR1_CRLF2_P2RY8_Y":     ("chrY",    1150000,   1650000),
     "HOXA_cluster":           ("chr7",   27090000,  27300000),
     "HOXB_cluster":           ("chr17",  48520000,  48630000),
 }
