@@ -445,6 +445,25 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name)
             r.mate_chrom, r.mate_pos, side_b, cytobands)
 
         hit, quality = dictionary_lookup(dictionary, gene_a, gene_b, band_a, band_b)
+
+        # Span guard. A cryptic-deletion pair whose two partners share one
+        # panel interval matches on tokens alone, so any small intra-interval
+        # event is stamped with a defining entity (observed: ~75 false CRLF2
+        # calls across PAR1; a 36 bp del labelled del(1)(p33p33)). When the
+        # dictionary row declares min_span_bp and the event is
+        # intrachromosomal with both positions known, an undersized span
+        # demotes the match: the record stays, the entity claim goes.
+        span_note = ""
+        if hit and quality == "full":
+            _ms = (hit.get("min_span_bp") or "").strip()
+            if (_ms and r.mate_chrom and r.mate_chrom == r.chrom
+                    and r.mate_pos is not None):
+                _span = abs(r.mate_pos - r.pos)
+                if _span < int(_ms):
+                    span_note = (f"span {_span}bp < min {_ms}bp for "
+                                 f"{hit.get('name','pair')}; entity removed")
+                    hit, quality = None, "below_span"
+
         hits = anchor_hits(anchors, gene_a, gene_b)
 
         # An event is reportable when the dictionary names it, or when it
@@ -476,7 +495,7 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name)
             "anchor":          ",".join(h["anchor"] for h in hits),
             "anchor_class":    ",".join(h["anchor_class"] for h in hits),
             "reportable":      reportable,
-            "dict_notes":      hit.get("notes", "") if hit else "",
+            "dict_notes":      (hit.get("notes", "") if hit else span_note),
             "callers":         ",".join(r.callers) or "unknown",
             "n_callers":       str(len(r.callers)),
             "supp_vec":        r.info.get("SUPP_VEC", ""),
