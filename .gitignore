@@ -20,3 +20,5 @@ report_*.zip
 script.log
 samplesheet/
 validation_20260818/
+.nextflow.pid
+script.log
