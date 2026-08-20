@@ -247,11 +247,49 @@
           window.__txFilterInstalled = true;
           jQuery.fn.DataTable.ext.search.push(function (settings, data, dataIndex) {
             if (settings.nTable.id !== 'tx-table') { return true; }
-            var toggle = document.getElementById('tx-show-all');
-            if (toggle && toggle.checked) { return true; }
             var node = settings.aoData[dataIndex].nTr;
-            return !node || node.getAttribute('data-translocation') !== '0';
+            var toggle = document.getElementById('tx-show-all');
+            var typeOk = (toggle && toggle.checked) ||
+                         !node || node.getAttribute('data-translocation') !== '0';
+            if (!typeOk) { return false; }
+            var min = window.__txMinReads || 0;
+            if (min > 0) {
+              if (window.__txSuppIdx == null) {
+                var ths = settings.nTable.querySelectorAll('thead th');
+                window.__txSuppIdx = -1;
+                for (var i = 0; i < ths.length; i++) {
+                  var t = (ths[i].textContent || '').trim().toLowerCase();
+                  if (t.indexOf('supporting') === 0) { window.__txSuppIdx = i; break; }
+                }
+              }
+              if (window.__txSuppIdx >= 0) {
+                var supp = parseInt(data[window.__txSuppIdx], 10) || 0;
+                if (supp < min) { return false; }
+              }
+            }
+            return true;
           });
+          var suppGrp = document.getElementById('tx-support-filter');
+          if (suppGrp) {
+            suppGrp.addEventListener('click', function (ev) {
+              var btn = ev.target.closest('button[data-tx-min]');
+              if (!btn) { return; }
+              window.__txMinReads = parseInt(btn.getAttribute('data-tx-min'), 10) || 0;
+              Array.prototype.forEach.call(
+                suppGrp.querySelectorAll('button[data-tx-min]'),
+                function (b) { b.classList.toggle('active', b === btn); });
+              var $t = jQuery('#tx-table');
+              if (jQuery.fn.DataTable.isDataTable($t)) {
+                var api = $t.DataTable();
+                api.draw();
+                var counter = document.getElementById('tx-support-count');
+                if (counter) {
+                  counter.textContent =
+                    api.rows({ search: 'applied' }).count() + ' shown';
+                }
+              }
+            });
+          }
         }
 
         var table = $table.DataTable(config);
