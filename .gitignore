@@ -15,3 +15,7 @@ sequences/
 report_*/
 report_*.zip
 *_bundle/
+*.bak
+.nextflow.pid
+script.log
+samplesheet/
