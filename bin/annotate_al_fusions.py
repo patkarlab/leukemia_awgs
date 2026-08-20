@@ -230,14 +230,22 @@ def _band_match(observed: Optional[str], expected: str) -> Optional[str]:
     exp_levels = _band_levels(expected)
     if not obs_levels or not exp_levels:
         return None
-    # Compare at the coarsest level the dictionary actually specifies.
-    for i, quality in enumerate(("partial_band", "partial_band", "partial_arm")):
-        if i < len(obs_levels) and i < len(exp_levels) \
-                and obs_levels[i] == exp_levels[i]:
-            return quality
-    # Dictionary gives a major band, observation a sub-band, or vice versa.
-    if set(obs_levels) & set(exp_levels):
-        return "partial_band"
+    # Walk coarse -> fine; remember the finest level that agrees and stop
+    # at the first shared level that disagrees. 4q25 vs 4q35 agree on the
+    # arm (level 0) but differ at the major band (level 1): that is a
+    # contradiction, not a partial match.
+    depth = -1
+    for i in range(min(len(obs_levels), len(exp_levels))):
+        if obs_levels[i] == exp_levels[i]:
+            depth = i
+        else:
+            if depth < 0:
+                return None
+            break
+    if depth >= 1:
+        return "partial_band"   # major band (or finer) agrees
+    if depth == 0:
+        return "partial_arm"    # arm only: a lead, not a call
     return None
 
 
@@ -489,7 +497,9 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name)
             "band_b":          band_b or "",
             "known_pair":      hit.get("name", "") if hit else "",
             "entity":          hit.get("entity", "") if hit else "",
-            "tier":            hit.get("tier", "") if hit else "",
+            "tier":            ((hit.get("tier", "") if quality == "full"
+                                 else (hit.get("tier", "") + "?" if hit.get("tier") else ""))
+                                if hit else ""),
             "known_freq":      hit.get("frequency", "") if hit else "",
             "match_quality":   quality,
             "anchor":          ",".join(h["anchor"] for h in hits),
