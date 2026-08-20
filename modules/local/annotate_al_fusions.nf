@@ -6,8 +6,8 @@ process ANNOTATE_AL_FUSIONS {
     tuple val(meta), path(merged_vcf), path(merged_tbi), path(panel_bed)
     path cytoband_bed
     path dictionary
-    path excluded_junctions
     path anchors
+    path excluded_junctions
 
     output:
     tuple val(meta), path("${meta.id}.al_fusions.tsv"), emit: tsv
