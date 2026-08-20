@@ -27,12 +27,13 @@ process REPORT_ZIP {
     script:
     def light = params.report_zip_light ? "--light" : ""
     def force = params.report_zip_force ? "--force" : ""
+    def nobam = params.report_zip_nobam ? "--no-bam" : ""
     """
     set -euo pipefail
 
     # --out . keeps the archive in the task directory so publishDir controls
     # where it lands, rather than the script writing outside its workdir.
-    make_report_zip.sh "${bundle}" ${light} ${force} --out .
+    make_report_zip.sh "${bundle}" ${light} ${nobam} ${force} --out .
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

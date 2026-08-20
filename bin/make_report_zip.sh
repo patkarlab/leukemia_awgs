@@ -26,6 +26,7 @@ set -euo pipefail
 
 BUNDLE=""
 LIGHT=0
+NOBAM=0
 FORCE=0
 # Default: the working directory the command was invoked from.
 OUTDIR="$PWD"
@@ -33,6 +34,7 @@ OUTDIR="$PWD"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --light) LIGHT=1; shift ;;
+    --no-bam) NOBAM=1; shift ;;
     --force) FORCE=1; shift ;;
     --out)   OUTDIR="${2:?--out needs a directory}"; shift 2 ;;
     -h|--help)
@@ -65,7 +67,9 @@ mkdir -p "$OUTDIR"
 OUTDIR="$(cd "$OUTDIR" && pwd)"
 
 NAME="$(basename "$BUNDLE")"
-if [[ "$LIGHT" -eq 1 ]]; then
+if [[ "$NOBAM" -eq 1 ]]; then
+  ZIP="${OUTDIR}/${NAME}_nobam.zip"
+elif [[ "$LIGHT" -eq 1 ]]; then
   ZIP="${OUTDIR}/${NAME}_light.zip"
 else
   ZIP="${OUTDIR}/${NAME}.zip"
@@ -77,11 +81,10 @@ PARENT="$(cd "$(dirname "$BUNDLE")" && pwd)"
 
 echo "Bundle : ${PARENT}/${NAME}"
 echo "Archive: ${ZIP}"
-if [[ "$LIGHT" -eq 1 ]]; then
-  echo "Mode   : light (igv/ excluded)"
-else
-  echo "Mode   : full"
-fi
+MODE="full"
+[[ "$LIGHT" -eq 1 ]] && MODE="light (igv/ excluded)"
+[[ "$NOBAM" -eq 1 ]] && MODE="${MODE%full} no-bam (bam/ excluded; IGV pages carry their own data)"
+echo "Mode   : ${MODE}"
 echo ""
 
 # --light removes the IGV tree, but the reports were built against a bundle
@@ -107,11 +110,14 @@ cd "$PARENT"
 # of each report), the intermediate tarball, and editor/OS debris.
 COMMON_EXCLUDES=( -x "*.preembed" "*.tar.gz" "*.bak" "*.bak_*" "*/.DS_Store" "*/Thumbs.db" )
 
+EXCLUDES=( "${COMMON_EXCLUDES[@]}" )
 if [[ "$LIGHT" -eq 1 ]]; then
-  zip -r -q "$ZIP" "$NAME" "${COMMON_EXCLUDES[@]}" "${NAME}/*/igv/*" "${NAME}/igv/*"
-else
-  zip -r -q "$ZIP" "$NAME" "${COMMON_EXCLUDES[@]}"
+  EXCLUDES+=( "${NAME}/*/igv/*" "${NAME}/igv/*" )
 fi
+if [[ "$NOBAM" -eq 1 ]]; then
+  EXCLUDES+=( "${NAME}/*/bam/*" "${NAME}/bam/*" )
+fi
+zip -r -q "$ZIP" "$NAME" "${EXCLUDES[@]}"
 
 # Windows Explorer still refuses paths beyond 260 characters when extracting,
 # and these bundles nest sample/igv/translocations/<event>.A.html. Warn before
