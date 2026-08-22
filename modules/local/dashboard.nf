@@ -26,10 +26,19 @@ process DASHBOARD {
     # layout it expects is the one the bundle already provides.
     python3 ${builder_dir}/build.py "${bundle}" ${subdir_arg}
 
+    # Gate publication on the report's interactive controls being correctly
+    # wired. A control bound to the wrong column does not raise an error; it
+    # returns a plausible table, or an empty one that reads as a genuine
+    # absence of events. The build succeeding is therefore not evidence that
+    # the report is usable, and the check belongs here, before the bundle is
+    # emitted, rather than in anyone's hands afterwards.
+    check_report_interactive.py "${bundle}"
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         python: \$(python3 --version | sed 's/Python //')
         jinja2: \$(python3 -c "import jinja2; print(jinja2.__version__)" 2>/dev/null || echo "unknown")
+        check_report_interactive.py: \$(python3 -c "print('1.0.0')")
         pandas: \$(python3 -c "import pandas; print(pandas.__version__)" 2>/dev/null || echo "unknown")
     END_VERSIONS
     """
@@ -38,6 +47,7 @@ process DASHBOARD {
     """
     mkdir -p ${bundle}
     touch ${bundle}/cohort_index.html
+    # No report is written in stub mode, so there is nothing to validate.
     echo '"${task.process}": stub' > versions.yml
     """
 }
