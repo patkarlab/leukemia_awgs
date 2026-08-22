@@ -85,18 +85,26 @@
     {# Supporting-read threshold. The variants tab offers the same control on
        alt count, and the reason is the same: an ensemble at low depth emits a
        long tail of two-read calls, and a reader wants to raise the floor
-       without editing the table. Discrete steps rather than a slider, because
-       the useful thresholds are few and clinical convention names them. #}
+       without editing the table. Discrete steps for the conventional
+       thresholds, plus a free entry beside them, because a validation run
+       occasionally needs a floor the preset row does not name. #}
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
       <span class="small text-muted">Minimum supporting reads</span>
       <div class="btn-group btn-group-sm" role="group" id="tx-support-filter">
-        {% for n in [0, 2, 3, 4, 5, 6, 10] %}
+        {% for n in [0, 1, 2, 3, 4, 5, 6, 10] %}
           <button type="button"
                   class="btn btn-outline-secondary{{ ' active' if n == 0 }}"
                   data-tx-min="{{ n }}">{{ 'all' if n == 0 else '&ge;' ~ n }}</button>
         {% endfor %}
       </div>
+      <div class="input-group input-group-sm" style="width: 8.5rem;">
+        <span class="input-group-text">&ge;</span>
+        <input type="number" class="form-control" id="tx-support-min"
+               min="0" step="1" placeholder="any"
+               aria-label="Minimum supporting reads, free entry">
+      </div>
       <span class="small text-muted ms-2" id="tx-support-count"></span>
+      <span class="small text-danger d-none" id="tx-support-warn"></span>
     </div>
 
     <div class="table-responsive">
@@ -207,15 +215,17 @@
         var $table = jQuery('#tx-table');
         if (!$table.length || jQuery.fn.DataTable.isDataTable($table)) { return true; }
 
-        // Column index of the supporting-read count, resolved from the header
-        // rather than assumed: the bundle step appends an alias column, which
-        // shifts every position after it.
-        var supportCol = -1;
-        $table.find('thead th').each(function (i) {
-          if (jQuery(this).text().trim().toLowerCase().indexOf('supporting') === 0) {
-            supportCol = i;
-          }
-        });
+        // Column index of the supporting-read count, supplied by the parser
+        // from the TSV header that produced the rows.
+        //
+        // This is deliberately not discovered in the browser. DataTables
+        // detaches the <th> of a hidden column, so any scan of thead run
+        // after initialisation enumerates visible columns only and yields an
+        // index short by the number of hidden columns preceding the target,
+        // while the row data remains indexed over every column. That
+        // mismatch silently repoints the threshold at a neighbouring column.
+        // The parser holds the one position that cannot drift.
+        var supportCol = {% if translocations.support_index is not none %}{{ translocations.support_index }} + igvOffset{% else %}-1{% endif %};
 
         var config = {
           paging: false,
@@ -247,49 +257,11 @@
           window.__txFilterInstalled = true;
           jQuery.fn.DataTable.ext.search.push(function (settings, data, dataIndex) {
             if (settings.nTable.id !== 'tx-table') { return true; }
-            var node = settings.aoData[dataIndex].nTr;
             var toggle = document.getElementById('tx-show-all');
-            var typeOk = (toggle && toggle.checked) ||
-                         !node || node.getAttribute('data-translocation') !== '0';
-            if (!typeOk) { return false; }
-            var min = window.__txMinReads || 0;
-            if (min > 0) {
-              if (window.__txSuppIdx == null) {
-                var ths = settings.nTable.querySelectorAll('thead th');
-                window.__txSuppIdx = -1;
-                for (var i = 0; i < ths.length; i++) {
-                  var t = (ths[i].textContent || '').trim().toLowerCase();
-                  if (t.indexOf('supporting') === 0) { window.__txSuppIdx = i; break; }
-                }
-              }
-              if (window.__txSuppIdx >= 0) {
-                var supp = parseInt(data[window.__txSuppIdx], 10) || 0;
-                if (supp < min) { return false; }
-              }
-            }
-            return true;
+            if (toggle && toggle.checked) { return true; }
+            var node = settings.aoData[dataIndex].nTr;
+            return !node || node.getAttribute('data-translocation') !== '0';
           });
-          var suppGrp = document.getElementById('tx-support-filter');
-          if (suppGrp) {
-            suppGrp.addEventListener('click', function (ev) {
-              var btn = ev.target.closest('button[data-tx-min]');
-              if (!btn) { return; }
-              window.__txMinReads = parseInt(btn.getAttribute('data-tx-min'), 10) || 0;
-              Array.prototype.forEach.call(
-                suppGrp.querySelectorAll('button[data-tx-min]'),
-                function (b) { b.classList.toggle('active', b === btn); });
-              var $t = jQuery('#tx-table');
-              if (jQuery.fn.DataTable.isDataTable($t)) {
-                var api = $t.DataTable();
-                api.draw();
-                var counter = document.getElementById('tx-support-count');
-                if (counter) {
-                  counter.textContent =
-                    api.rows({ search: 'applied' }).count() + ' shown';
-                }
-              }
-            });
-          }
         }
 
         var table = $table.DataTable(config);
@@ -298,6 +270,102 @@
         if (showAll) {
           showAll.addEventListener('change', function () { table.draw(); });
         }
+
+        // Supporting-read threshold ------------------------------------------
+        // Two rules govern this predicate. It prefers the numeric sort key the
+        // parser already emits as data-order over the rendered text, and a
+        // value it cannot parse KEEPS the row rather than dropping it. A
+        // resolver failure must degrade to an unfiltered table, never to an
+        // empty one: an empty table reads as a genuine absence of events and
+        // is the more dangerous failure in a diagnostic report.
+        var minSupport = 0;
+        var supportBox = document.getElementById('tx-support-min');
+        var supportGroup = document.getElementById('tx-support-filter');
+        var supportCount = document.getElementById('tx-support-count');
+        var supportWarn = document.getElementById('tx-support-warn');
+
+        function supportValue(settings, dataIndex, data) {
+          var cells = settings.aoData[dataIndex].anCells;
+          var cell = cells ? cells[supportCol] : null;
+          var raw = cell ? cell.getAttribute('data-order') : null;
+          if (raw === null || raw === '') {
+            raw = data ? data[supportCol] : null;
+          }
+          if (raw === null || raw === undefined) { return NaN; }
+          var match = String(raw).match(/-?\d+(?:\.\d+)?/);
+          return match ? parseFloat(match[0]) : NaN;
+        }
+
+        if (!window.__txSupportFilterInstalled) {
+          window.__txSupportFilterInstalled = true;
+          jQuery.fn.DataTable.ext.search.push(function (settings, data, dataIndex) {
+            if (settings.nTable.id !== 'tx-table') { return true; }
+            if (minSupport <= 0 || supportCol < 0) { return true; }
+            var value = supportValue(settings, dataIndex, data);
+            return isFinite(value) ? (value >= minSupport) : true;
+          });
+        }
+
+        function updateSupportCount() {
+          if (!supportCount) { return; }
+          var n = table.rows({ search: 'applied' }).count();
+          supportCount.textContent = n + (n === 1 ? ' shown' : ' shown');
+        }
+
+        function setSupportActive(button) {
+          if (!supportGroup) { return; }
+          jQuery(supportGroup).find('button').removeClass('active');
+          if (button) { jQuery(button).addClass('active'); }
+        }
+
+        function applyMinSupport(value) {
+          minSupport = (isFinite(value) && value > 0) ? value : 0;
+          table.draw();
+        }
+
+        if (supportCol < 0) {
+          // The threshold cannot be honoured, so say so rather than filtering
+          // on a column that was never found.
+          if (supportWarn) {
+            supportWarn.classList.remove('d-none');
+            supportWarn.textContent =
+              'Supporting-reads column not present; threshold disabled.';
+          }
+          if (supportGroup) {
+            jQuery(supportGroup).find('button').prop('disabled', true);
+          }
+          if (supportBox) { supportBox.disabled = true; }
+          if (window.console) {
+            console.warn('tx-table: no header matched "Supporting reads"; ' +
+                         'threshold filter disabled');
+          }
+        } else {
+          if (supportGroup) {
+            supportGroup.addEventListener('click', function (event) {
+              var button = event.target.closest
+                ? event.target.closest('button[data-tx-min]')
+                : null;
+              if (!button) { return; }
+              setSupportActive(button);
+              if (supportBox) { supportBox.value = ''; }
+              applyMinSupport(parseInt(button.getAttribute('data-tx-min'), 10));
+            });
+          }
+          if (supportBox) {
+            supportBox.addEventListener('input', function () {
+              var entered = parseInt(supportBox.value, 10);
+              if (supportBox.value === '' && supportGroup) {
+                setSupportActive(supportGroup.querySelector('button[data-tx-min="0"]'));
+              } else {
+                setSupportActive(null);
+              }
+              applyMinSupport(entered);
+            });
+          }
+        }
+
+        table.on('draw', updateSupportCount);
+        updateSupportCount();
 
         {% for column in translocations.columns %}
           {% if column.default_hidden %}

@@ -91,6 +91,11 @@ COLUMN_LABELS = {
 # Column used as the default sort key, descending, when present.
 DEFAULT_SORT_COLUMN = "support_reads"
 
+# Column carrying the supporting-read count that the threshold filter acts on.
+# Named separately from DEFAULT_SORT_COLUMN so that changing the default sort
+# does not silently repoint the filter.
+SUPPORT_COLUMN = "support_reads"
+
 # sv_type values that denote a rearrangement between two loci. Everything else
 # in the annotated table (DEL, INS, INV, DUP) is a different evidence class and
 # is hidden from this tab by default.
@@ -268,6 +273,7 @@ def parse(effective_dir, sample, igv_flank=5000):
             "rows": [],
             "has_igv": False,
             "default_sort_index": None,
+            "support_index": None,
         }
 
     path = _find_table(effective_dir, sample)
@@ -375,6 +381,16 @@ def parse(effective_dir, sample, igv_flank=5000):
     if DEFAULT_SORT_COLUMN in index:
         default_sort_index = index[DEFAULT_SORT_COLUMN]
 
+    # Position of the supporting-read count among the rendered columns. The
+    # template needs this to apply a threshold, and the position must come
+    # from here rather than be recovered from the rendered header: DataTables
+    # detaches hidden <th> elements, so a DOM scan performed after
+    # initialisation enumerates visible columns only and returns an index
+    # short by the number of hidden columns preceding the target, while the
+    # row data stays indexed over every column. Deriving it from the header
+    # that produced the data is the only position that cannot drift.
+    support_index = index.get(SUPPORT_COLUMN)
+
     return {
         "found": True,
         "searched": str(effective_dir),
@@ -388,5 +404,6 @@ def parse(effective_dir, sample, igv_flank=5000):
         "rows": rows,
         "has_igv": has_igv,
         "default_sort_index": default_sort_index,
+        "support_index": support_index,
         "igv_flank": igv_flank,
     }
