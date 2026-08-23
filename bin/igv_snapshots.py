@@ -351,6 +351,13 @@ def select_events(rows, sv_types, interchromosomal_only, min_callers, max_events
     events are kept in descending order of supporting reads so the
     best-evidenced survive.
 
+    A row carrying a tier bypasses every filter here and is exempt from the
+    cap. The actionable and defining calls in this assay are frequently
+    intrachromosomal DEL or INV, so a type-and-chromosome filter drops exactly
+    the events a reader needs the evidence for: PDGFRB::EBF1 (DEL plus its
+    reciprocal INV pair) and P2RY8::CRLF2 (INV) had no pages at all. Graded
+    rows are a handful per sample, so the page cost is negligible.
+
     Note on min_callers: the default is 1, deliberately. Single-caller
     rearrangements at low read support are not noise to be filtered away in
     this assay; they are the calls this panel exists to recover. Raising this
@@ -366,14 +373,21 @@ def select_events(rows, sv_types, interchromosomal_only, min_callers, max_events
         "excluded_intrachromosomal": 0,
         "excluded_callers": 0,
         "excluded_cap": 0,
+        "kept_graded": 0,
     }
 
     selected = []
+    graded = []
     for row in rows:
         sv_type = (row.get("sv_type") or "").strip().upper()
         counts["by_type"][sv_type or "(blank)"] = (
             counts["by_type"].get(sv_type or "(blank)", 0) + 1
         )
+
+        if (row.get("tier") or "").strip():
+            counts["kept_graded"] += 1
+            graded.append(row)
+            continue
 
         if wanted and sv_type not in wanted:
             counts["excluded_type"] += 1
@@ -406,6 +420,9 @@ def select_events(rows, sv_types, interchromosomal_only, min_callers, max_events
         counts["excluded_cap"] = len(selected) - max_events
         selected = selected[:max_events]
 
+    # Graded rows lead, and are never capped away.
+    selected = graded + selected
+
     counts["selected"] = len(selected)
     return selected, counts
 
@@ -421,6 +438,7 @@ def report_selection(counts, sv_types, interchromosomal_only, min_callers):
     eprint("  by sv_type               : %s" % by_type)
     eprint("  keeping sv_type          : %s" % sv_types)
     eprint("  interchromosomal only    : %s" % interchromosomal_only)
+    eprint("  kept, graded (bypass)    : %d" % counts.get("kept_graded", 0))
     eprint("  minimum callers          : %d" % min_callers)
     eprint("  dropped, wrong sv_type   : %d" % counts["excluded_type"])
     eprint("  dropped, same chromosome : %d" % counts["excluded_intrachromosomal"])

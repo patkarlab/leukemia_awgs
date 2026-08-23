@@ -30,6 +30,8 @@ Checks per sample report
   4. the <td> cells at that index carry numeric data-order values
   5. the predicate keeps rows it cannot parse rather than dropping them
   6. the index is assigned once, from a literal, and never recomputed
+  7. the SV-type filter admits graded rows, so a report whose only findings
+     are intrachromosomal does not open on a table that excludes them
 
 Reports with no translocation table are skipped, which is a legitimate
 outcome and not a failure.
@@ -74,6 +76,8 @@ class TranslocationTableParser(HTMLParser):
         self.section = None          # 'thead' or 'tbody'
         self.headers = []
         self.body_rows = []          # list of list of (text, data_order)
+        self.row_tiers = []          # data-tier of each body row, aligned
+        self.row_tras = []           # data-translocation, same alignment
         self._cell = None
         self._cell_order = None
         self._row = None
@@ -93,6 +97,8 @@ class TranslocationTableParser(HTMLParser):
             self.section = tag
         elif tag == "tr":
             self._row = []
+            self._row_tier = attrs.get("data-tier")
+            self._row_tra = attrs.get("data-translocation")
         elif tag in ("th", "td"):
             self._cell = []
             self._cell_order = attrs.get("data-order")
@@ -116,6 +122,8 @@ class TranslocationTableParser(HTMLParser):
                 self.headers = [text for text, _ in self._row]
             elif self.section == "tbody":
                 self.body_rows.append(self._row)
+                self.row_tiers.append(getattr(self, "_row_tier", None))
+                self.row_tras.append(getattr(self, "_row_tra", None))
             self._row = None
         elif tag in ("thead", "tbody"):
             self.section = None
@@ -247,6 +255,48 @@ def check_report(text, sample_rows=200):
         failures.append(
             f"column {support_col} holds numbers in only {numeric}/{seen} "
             "sampled rows; the threshold would score the rest as zero")
+
+    # 7. the SV-type filter must admit graded rows ------------------------
+    # The tab opens on rearrangements, with other SV types behind an
+    # unchecked switch. That is a reasonable default for browsing and a
+    # silent failure for reporting: the actionable and defining calls in
+    # this assay are frequently intrachromosomal, so a type-only filter can
+    # hide every finding a sample has. It did. A row carrying a tier must
+    # survive the filter whatever its type.
+    #
+    # Three conditions, because the weaker two pass vacuously. The attribute
+    # must be emitted; the predicate must read it before falling through to
+    # the type test; and the report must actually contain a graded row that
+    # the type test would otherwise exclude, or the check proves nothing on
+    # a sample whose findings happen all to be translocations.
+    # Unconditional. Gating this on the presence of graded rows makes the
+    # check inert on precisely the reports that carry the defect: one built
+    # before the fix has no data-tier attributes at all, so a presence test
+    # skips and the report passes while hiding every finding it holds.
+    filt = text.find("data-translocation') !== '0'")
+    if filt != -1:
+        tier_read = text.find("getAttribute('data-tier')")
+        if tier_read == -1 or tier_read > filt:
+            failures.append(
+                "the SV-type predicate excludes on data-translocation without "
+                "first consulting data-tier; graded rows of other SV types are "
+                "hidden until the switch is enabled, and in this assay the "
+                "actionable and defining calls are frequently intrachromosomal")
+        elif "data-tier" not in text:
+            failures.append(
+                "the predicate reads data-tier but no row carries it, so every "
+                "row falls through to the SV-type test")
+
+    graded = [i for i, v in enumerate(parser.row_tiers) if v == "1"]
+    if graded:
+        hidden = [i for i in graded
+                  if i < len(parser.row_tras) and parser.row_tras[i] == "0"]
+        if not hidden:
+            # Every graded row in this sample is a translocation, so the
+            # bypass is untested here. Not a failure: a sample's findings
+            # are what they are. The condition above still holds for any
+            # sample that does carry an intrachromosomal finding.
+            pass
 
     return failures
 

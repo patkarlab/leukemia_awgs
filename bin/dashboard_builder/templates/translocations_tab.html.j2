@@ -56,7 +56,8 @@
         <div class="form-check form-switch">
           <input class="form-check-input" type="checkbox" id="tx-show-all">
           <label class="form-check-label small text-muted" for="tx-show-all">
-            Show all SV types ({{ translocations.n_other }} DEL / INS / INV / DUP)
+            Show all SV types ({{ translocations.n_other }} DEL / INS / INV / DUP;
+            graded calls are always shown)
           </label>
         </div>
       {% endif %}
@@ -119,7 +120,8 @@
         </thead>
         <tbody>
           {% for row in translocations.rows %}
-            <tr data-translocation="{{ '1' if row.is_translocation else '0' }}">
+            <tr data-translocation="{{ '1' if row.is_translocation else '0' }}"
+                data-tier="{{ '1' if row.has_tier else '0' }}">
               {% if translocations.has_igv %}
                 <td>
                   {% if row.igv.html_a or row.igv.html_b %}
@@ -260,7 +262,15 @@
             var toggle = document.getElementById('tx-show-all');
             if (toggle && toggle.checked) { return true; }
             var node = settings.aoData[dataIndex].nTr;
-            return !node || node.getAttribute('data-translocation') !== '0';
+            if (!node) { return true; }
+            // A graded row shows regardless of SV type. The default view is
+            // rearrangements, but the actionable and defining calls in this
+            // assay are frequently intrachromosomal: PDGFRB::EBF1 is a DEL
+            // plus its reciprocal INV pair, P2RY8::CRLF2 an INV. Filtering on
+            // type alone hid every graded call in those samples behind an
+            // unchecked switch.
+            if (node.getAttribute('data-tier') === '1') { return true; }
+            return node.getAttribute('data-translocation') !== '0';
           });
         }
 

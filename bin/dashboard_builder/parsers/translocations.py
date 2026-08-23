@@ -360,6 +360,11 @@ def parse(effective_dir, sample, igv_flank=5000):
                 "event_id": event_id,
                 "sv_type": sv_type,
                 "is_translocation": is_translocation,
+                # A graded row is shown whatever its SV type. The tab's default
+                # view is rearrangements, but the actionable and defining calls
+                # in this assay are often intrachromosomal DEL or INV, so a
+                # type-only filter hides them.
+                "has_tier": bool(field(padded, "tier")),
                 "igv": {
                     "locus_a": locus_a,
                     "locus_b": locus_b,
