@@ -1,0 +1,36 @@
+# Single-gene lesions: deletions that are findings in their own right.
+#
+# The fusion dictionary is a partner-pair table. It cannot express a lesion
+# with one gene, so recurrent deletions of IKZF1, CDKN2A/B, PAX5, ETV6 and
+# EBF1 - among the commonest alterations in B-ALL - had nowhere to land and
+# reported as nothing. This file is the deletion counterpart of
+# focal_duplication_targets.tsv and shares its shape.
+#
+# Detection is by interval overlap with the gene body, not by what the
+# breakends were named. That matters: the CDKN2A/B deletion observed here has
+# both breakends outside either gene body, so a label-based rule misses it
+# while an overlap rule does not.
+#
+# TIER. The fusion dictionary uses defining / actionable / emerging, none of
+# which fits a prognostic copy-number alteration: these are not entity-
+# defining in WHO or ICC, and there is no targeted therapy. `risk` is added
+# here rather than to the fusion dictionary, which is left alone.
+#
+# THRESHOLDS are provisional and set from five observed calls across three
+# samples, not from a truth set. min_frac is the fraction of the gene body
+# the deletion must cover; min_len is an absolute floor, needed because
+# CDKN2B is 6.4 kb and a fraction alone would admit indel noise; min_support
+# matches the callers' own floor.
+#
+# NOT DISTINGUISHED: partial versus whole-gene loss. IKZF1 Delta-4-7 is the
+# dominant-negative form and behaves differently from haploinsufficiency, but
+# telling them apart needs exon coordinates and is not done here.
+#
+gene	disease	reference	mode	min_frac	min_len	min_support	tier	label	notes
+IKZF1	ALL	t2t	deletion	0.15	10000	2	risk	IKZF1-del	76% in adult Ph+ ALL (GMALL). IKZF1plus requires a co-deletion and this table cannot assert it: BTG1 is off-panel. Delta-4-7, the dominant-negative form, is not distinguished from whole-gene loss
+CDKN2A	ALL	t2t	deletion	0.15	5000	2	risk	CDKN2A-del	45% in adult Ph+. Pooled HR ~2.15 for OS across 13 studies. Independent in adults and in BFM paediatric cohorts; contested as a standalone in other childhood series (EORTC 58881/58951). Component of IKZF1plus and the UKALL CNA profile
+CDKN2B	ALL	t2t	deletion	0.15	3000	2	risk	CDKN2B-del	Usually co-deleted with CDKN2A. The gene body is 6.4 kb, so min_len sits below the others or 0.15 of it would fall into indel noise
+PAX5	ALL	t2t	deletion	0.15	10000	2	risk	PAX5-del	43% in adult Ph+. PAX5alt group. Distinct from a PAX5 fusion, which the fusion dictionary handles
+ETV6	ALL	t2t	deletion	0.15	10000	2	risk	ETV6-del	5% in adult Ph+, commoner in paediatric disease. Distinct from ETV6::RUNX1. min_frac is set by this gene: the observed call is 48.6 kb over a 245 kb body, three callers, 13 reads
+EBF1	ALL	t2t	deletion	0.15	10000	2	risk	EBF1-del	13% in adult Ph+. Distinct from EBF1::PDGFRB, which the fusion dictionary handles
+TP53	BOTH	t2t	deletion	0.15	5000	2	actionable	TP53-del	Uncommon in B-ALL outside hypodiploidy and relapse, where it is a marker rather than a target. On-panel for ELN risk in AML

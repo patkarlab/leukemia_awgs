@@ -480,6 +480,83 @@ def dist_to_gene(chrom, pos, name, model):
     return best
 
 
+def load_lesion_targets(path, panel_name):
+    """Single-gene deletion targets for this panel, or [] when not supplied.
+
+    Rows scoped to another panel are dropped here rather than at match time,
+    so a mixed AML/ALL batch never tests an ALL lesion against an AML sample.
+    """
+    if path is None:
+        return []
+    out = []
+    with open(path) as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#"):
+                continue
+            f = line.split("\t")
+            if len(f) < 10 or f[0] == "gene":
+                continue
+            if f[1] not in (panel_name, "BOTH"):
+                continue
+            try:
+                out.append({
+                    "gene": f[0], "mode": f[3],
+                    "min_frac": float(f[4]), "min_len": int(f[5]),
+                    "min_support": int(f[6]), "tier": f[7],
+                    "label": f[8], "notes": f[9],
+                })
+            except ValueError:
+                sys.stderr.write(f"lesion targets: unparsable row for {f[0]}\n")
+    return out
+
+
+def lesion_hit(record, targets, gene_model):
+    """Return (target, covered_fraction) for a deletion covering a target gene.
+
+    Matched by interval overlap with the gene body, not by what the breakends
+    were named. That distinction is the point: on one validation sample the
+    CDKN2A/B deletion has both breakends outside either gene body, so a
+    label-based rule misses it entirely while an overlap rule does not.
+
+    A deletion covering two targets (CDKN2A and CDKN2B lie 7.6 kb apart and
+    are usually lost together) returns the one it covers most completely; the
+    other is reported on its own row from its own record if it qualifies.
+    """
+    if not targets or not gene_model:
+        return None, None
+    if record.sv_type not in ("DEL",):
+        return None, None
+    if record.mate_chrom != record.chrom or record.mate_pos is None:
+        return None, None
+    lo, hi = sorted((record.pos, record.mate_pos))
+    if (hi - lo) < min(t["min_len"] for t in targets):
+        return None, None
+
+    # Support is not tested here. The merged VCF carries SUPP and SUPP_VEC,
+    # which count callers, and a FORMAT of GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO
+    # with no DV, so support_reads_from returns nothing for every record at
+    # this stage: AUGMENT_SV_SUPPORT exists because per-caller read support
+    # cannot be recovered from the merge. Recovering a partial value here
+    # would put a second, worse source of the same number into the pipeline.
+    # The match is geometric; min_support in the targets file is enforced
+    # downstream, where the real counts live.
+    best, best_frac = None, 0.0
+    for tgt in targets:
+        for reg in gene_model:
+            if reg.chrom != record.chrom or reg.name != tgt["gene"]:
+                continue
+            body = reg.end - reg.start
+            if body <= 0:
+                continue
+            covered = max(0, min(hi, reg.end) - max(lo, reg.start))
+            frac = covered / body
+            if (frac >= tgt["min_frac"] and (hi - lo) >= tgt["min_len"]
+                    and frac > best_frac):
+                best, best_frac = tgt, frac
+    return best, (best_frac if best else None)
+
+
 def characterize_side(chrom, pos, region, cytobands, gene_model=None):
     """Return (label, source, band) for one breakpoint side.
 
@@ -503,7 +580,7 @@ def characterize_side(chrom, pos, region, cytobands, gene_model=None):
 
 
 def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name,
-             gene_model=None):
+             gene_model=None, lesion_targets=None):
     out = []
     for r in records:
         side_a = region_for(r.chrom, r.pos, panel)
@@ -556,10 +633,23 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name,
         anchor_b = gene_b if dist_b in (0, None) else None
         hits = anchor_hits(anchors, anchor_a, anchor_b)
 
-        # An event is reportable when the dictionary names it, or when it
-        # touches a promiscuous anchor. Everything else is emitted too but
-        # carries reportable=no, so the on-panel callset stays auditable.
-        reportable = "yes" if (hit or hits) else "no"
+        # Single-gene lesion. A deletion covering enough of a target gene is
+        # a finding whatever its breakends were named: the CDKN2A/B deletion
+        # on one validation sample has both ends outside either gene body, so
+        # a label-based test misses it and an overlap test does not.
+        #
+        # The dictionary wins where both fire. EBF1::PDGFRB is an 8.5 Mb
+        # deletion that covers the whole EBF1 body, so it matches EBF1-del on
+        # overlap; it is a fusion, and its entity and tier stay the fusion's.
+        # The lesion column still records the overlap, because the EBF1 loss
+        # is real and worth seeing beside the fusion that caused it.
+        les, les_frac = lesion_hit(r, lesion_targets, gene_model)
+
+        # An event is reportable when the dictionary names it, when it
+        # touches a promiscuous anchor, or when it is a single-gene lesion.
+        # Everything else is emitted too but carries reportable=no, so the
+        # on-panel callset stays auditable.
+        reportable = "yes" if (hit or hits or les) else "no"
 
         out.append({
             "sample":          sample,
@@ -573,6 +663,8 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name,
             "chrom_b":         r.mate_chrom or "",
             "pos_b":           str(r.mate_pos) if r.mate_pos is not None else "",
             "gene_b":          gene_b,
+            "lesion":          (f"{les['label']} ({les_frac:.0%} of gene)"
+                                if les else ""),
             "gene_a_dist":     "" if dist_a is None else str(dist_a),
             "gene_b_dist":      "" if dist_b is None else str(dist_b),
             "gene_a_source":   src_a,
@@ -601,6 +693,7 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name,
 COLUMNS = [
     "sample", "panel", "sv_id", "sv_type", "filter",
     "chrom_a", "pos_a", "gene_a", "chrom_b", "pos_b", "gene_b",
+    "lesion",
     "gene_a_source", "gene_b_source", "gene_a_dist", "gene_b_dist",
     "band_a", "band_b",
     "known_pair", "entity", "tier", "known_freq", "match_quality",
@@ -686,6 +779,10 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--vcf", required=True, type=Path)
     ap.add_argument("--panel-bed", required=True, type=Path)
+    ap.add_argument("--lesion-targets", type=Path, default=None,
+                    help="Single-gene deletion targets. Matched by overlap "
+                         "with the gene body, independently of the fusion "
+                         "dictionary.")
     ap.add_argument("--gene-model", type=Path, default=None,
                     help="One feature per gene, unmerged and unflanked. Used "
                          "for naming a breakpoint's gene; panel membership "
@@ -723,8 +820,13 @@ def main() -> int:
             f"excluded junctions: {len(set(k[0] for k in excl))} chromosome "
             f"pair(s) from {args.excluded_junctions}\n")
 
+    lesion_targets = load_lesion_targets(args.lesion_targets, args.panel)
+    if lesion_targets:
+        sys.stderr.write(f"lesion targets: {len(lesion_targets)} gene(s) from "
+                         f"{args.lesion_targets}\n")
+
     rows = annotate(records, panel, dictionary, anchors, args.sample,
-                    cytobands, args.panel, gene_model)
+                    cytobands, args.panel, gene_model, lesion_targets)
 
     with open(args.output, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=COLUMNS, delimiter="\t",
