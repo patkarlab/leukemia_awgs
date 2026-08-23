@@ -33,6 +33,7 @@ process ICHORCNA {
     # Build the exclude regions file (centromeres + panel mask)
     {
         awk -v OFS='\\t' '!/^#/ && NF>=3 {print \$1, \$2, \$3}' ${params.ichorcna_centromere}
+        awk -v OFS='\\t' '!/^#/ && NF>=3 {print \$1, \$2, \$3}' ${params.ichorcna_exclude}
         awk -v OFS='\\t' '!/^#/ && NF>=3 {print \$1, \$2, \$3}' ${panel_bed}
     } | sort -k1,1 -k2,2n > exclude.txt
 
@@ -65,7 +66,7 @@ process ICHORCNA {
         --chrs "c(1:22)" \\
         --chrTrain "${params.ichorcna_chrtrain}" \\
         --estimateNormal TRUE \\
-        --estimatePloidy TRUE \\
+        --estimatePloidy FALSE \\
         --estimateScPrevalence FALSE \\
         --scStates 'c()' \\
         --txnE 0.9999999 \\

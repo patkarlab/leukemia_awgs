@@ -1,0 +1,31 @@
+# Regions excluded from ichorCNA binning, beyond centromeres.
+#
+# ichorCNA's shipped centromere_acen file covers centromeres and acrocentric
+# arms only. Twelve 1 Mb bins outside those regions carried corrected log2
+# values from -1.0 to -12.8 - depth ratios down to one in seven thousand,
+# which no copy state can produce. They are mapping failures: MHC, where hg38
+# carries alt haplotypes; subtelomeres; and known blacklist intervals.
+#
+# The effect was not subtle. Those twelve bins carried essentially all the
+# genome-wide variance (global sd 0.402 against an interquartile range of
+# 0.06), and the HMM could not fit any tumour fraction that accommodated
+# them, so every chromosome was smoothed into a single NEUT segment. A
+# trisomy 21 at log2 +0.53 across 22 bins, later confirmed by FISH, was
+# reported as neutral with tumour fraction 0.
+#
+# With these masked the same data yields chr21 copy 3 GAIN in one sample, a
+# 9p loss at 12-35 Mb in another (concordant with short-read), and a 9q loss
+# at 79-82 Mb in the third.
+#
+# Concatenated with the centromere file and the panel BED in
+# modules/local/ichorcna.nf. Coordinates are hg38, chr-prefixed to match.
+#
+# Chr	Start	End
+chr6	28000000	34000000
+chr15	28000000	32000000
+chr8	1	2000000
+chr17	1	2000000
+chr1	244000000	246000000
+chr4	67000000	69000000
+chr6	127000000	129000000
+chr8	38000000	40000000
