@@ -55,6 +55,7 @@ from pathlib import Path
 
 SUPPORT_HEADER_PATTERN = re.compile(r"supporting[\s-]*reads?", re.I)
 SUPPORT_COL_PATTERN = re.compile(r"\bsupportCol\s*=\s*([^;]+);")
+IGV_OFFSET_PATTERN = re.compile(r"\bigvOffset\s*=\s*(\d+)")
 
 
 class TranslocationTableParser(HTMLParser):
@@ -157,9 +158,9 @@ def check_report(text, sample_rows=200):
     # 5. the predicate must keep rows it cannot parse ---------------------
     if "isFinite(value) ? (value >= minSupport) : true" not in text:
         failures.append(
-            "threshold predicate does not keep rows with an unparsable "
-            "value; a resolver failure must degrade to an unfiltered table, "
-            "not an empty one")
+            "threshold predicate is absent, or drops rows whose value it "
+            "cannot parse; a resolver failure must degrade to an "
+            "unfiltered table, not an empty one")
 
     # 2. the emitted index ------------------------------------------------
     # Exactly one assignment, from a literal. More than one means the value
@@ -179,7 +180,22 @@ def check_report(text, sample_rows=200):
         return failures
 
     expression = assignments[0].strip()
-    igv_offset = 1 if "igvOffset" in expression else 0
+
+    # The offset is whatever the report emits, not whatever the expression
+    # mentions. A sample without IGV snapshots renders no IGV column and sets
+    # igvOffset to 0, so reading the token rather than its value shifts every
+    # such report by one and reports a correct index as wrong.
+    if "igvOffset" in expression:
+        offset_match = IGV_OFFSET_PATTERN.search(text)
+        if not offset_match:
+            failures.append(
+                "supportCol references igvOffset but no igvOffset assignment "
+                "was found; the index cannot be validated")
+            return failures
+        igv_offset = int(offset_match.group(1))
+    else:
+        igv_offset = 0
+
     literal = re.match(r"^(-?\d+)", expression)
     if not literal:
         failures.append(f"supportCol is not a literal index: {expression!r}")
