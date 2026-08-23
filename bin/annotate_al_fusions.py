@@ -427,10 +427,34 @@ def region_for(chrom, pos, panel) -> Optional[PanelRegion]:
     return None
 
 
-def characterize_side(chrom, pos, region, cytobands):
-    """Return (label, source, band) for one breakpoint side."""
+def gene_for(chrom, pos, model):
+    """Tightest gene-model feature containing this coordinate, or None.
+
+    Tightest wins because gene models legitimately overlap (a gene inside
+    another's intron); the smaller feature is the more specific answer."""
+    if not model or chrom is None or pos is None:
+        return None
+    best = None
+    for reg in model:
+        if reg.chrom == chrom and reg.start <= pos < reg.end:
+            if best is None or (reg.end - reg.start) < (best.end - best.start):
+                best = reg
+    return best.name if best else None
+
+
+def characterize_side(chrom, pos, region, cytobands, gene_model=None):
+    """Return (label, source, band) for one breakpoint side.
+
+    Resolution order: gene model, panel interval label, cytoband, coordinate.
+    The gene model comes first because a panel interval may be a merged
+    compound ("PAX5/ZCCHC7") or a named locus, neither of which names the gene
+    a breakpoint actually fell in. Panel membership is decided separately, by
+    region_for against the panel BED; this only supplies the label."""
     band = cytobands.band_for(chrom, pos)
     band_label = f"{strip_chr(chrom)}{band}" if band and chrom else None
+    gene = gene_for(chrom, pos, gene_model)
+    if gene:
+        return gene, "gene_model", band_label
     if region is not None:
         return region.name, "panel", band_label
     if band_label:
@@ -440,7 +464,8 @@ def characterize_side(chrom, pos, region, cytobands):
     return "OFF_PANEL", "coordinate", None
 
 
-def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name):
+def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name,
+             gene_model=None):
     out = []
     for r in records:
         side_a = region_for(r.chrom, r.pos, panel)
@@ -448,9 +473,10 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name)
         if side_a is None and side_b is None:
             continue
 
-        gene_a, src_a, band_a = characterize_side(r.chrom, r.pos, side_a, cytobands)
+        gene_a, src_a, band_a = characterize_side(
+            r.chrom, r.pos, side_a, cytobands, gene_model)
         gene_b, src_b, band_b = characterize_side(
-            r.mate_chrom, r.mate_pos, side_b, cytobands)
+            r.mate_chrom, r.mate_pos, side_b, cytobands, gene_model)
 
         hit, quality = dictionary_lookup(dictionary, gene_a, gene_b, band_a, band_b)
 
@@ -575,11 +601,36 @@ def excluded_reason(excl, row):
     return None
 
 
+def load_gene_model(bed_path):
+    """One feature per gene, unmerged and unflanked. Optional: absent means
+    naming falls back to the panel label, which is the pre-gene-model
+    behaviour. Unlike load_panel this does not exit on an empty file, since
+    the model is not required for the run to be valid."""
+    if bed_path is None:
+        return []
+    out = []
+    with open(bed_path) as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line or line.startswith(("#", "track")):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 4:
+                continue
+            out.append(PanelRegion(parts[0], int(parts[1]), int(parts[2]),
+                                   parts[3]))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--vcf", required=True, type=Path)
     ap.add_argument("--panel-bed", required=True, type=Path)
+    ap.add_argument("--gene-model", type=Path, default=None,
+                    help="One feature per gene, unmerged and unflanked. Used "
+                         "for naming a breakpoint's gene; panel membership "
+                         "still comes from --panel-bed.")
     ap.add_argument("--cytoband-bed", required=True, type=Path)
     ap.add_argument("--dictionary", required=True, type=Path)
     ap.add_argument("--anchors", required=True, type=Path)
@@ -599,6 +650,10 @@ def main() -> int:
     args = ap.parse_args()
 
     panel = load_panel(args.panel_bed)
+    gene_model = load_gene_model(args.gene_model)
+    if gene_model:
+        sys.stderr.write(f"gene model: {len(gene_model)} genes from "
+                         f"{args.gene_model}\n")
     dictionary = load_dictionary(args.dictionary, args.panel)
     anchors = load_anchors(args.anchors, args.panel)
     cytobands = load_cytobands(args.cytoband_bed)
@@ -610,7 +665,7 @@ def main() -> int:
             f"pair(s) from {args.excluded_junctions}\n")
 
     rows = annotate(records, panel, dictionary, anchors, args.sample,
-                    cytobands, args.panel)
+                    cytobands, args.panel, gene_model)
 
     with open(args.output, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=COLUMNS, delimiter="\t",

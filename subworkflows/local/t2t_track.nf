@@ -90,7 +90,9 @@ workflow T2T_TRACK {
         if (!params.skip_fusion_annotation) {
             ANNOTATE_AL_FUSIONS(
                 SURVIVOR_MERGE.out.merged_vcf.map { meta, vcf, tbi ->
-                    tuple(meta, vcf, tbi, file(panelPath(meta, 't2t_chr'), checkIfExists: true))
+                    tuple(meta, vcf, tbi,
+                          file(panelPath(meta, 't2t_chr'), checkIfExists: true),
+                          file(panelPath(meta, 'gene_model_t2t'), checkIfExists: true))
                 },
                 file(params.cytoband_bed_t2t,   checkIfExists: true),
                 file(params.al_fusion_dict,     checkIfExists: true),

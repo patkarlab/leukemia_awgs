@@ -3,7 +3,7 @@ process ANNOTATE_AL_FUSIONS {
     label 'process_low'
 
     input:
-    tuple val(meta), path(merged_vcf), path(merged_tbi), path(panel_bed)
+    tuple val(meta), path(merged_vcf), path(merged_tbi), path(panel_bed), path(gene_model)
     path cytoband_bed
     path dictionary
     path anchors
@@ -18,6 +18,7 @@ process ANNOTATE_AL_FUSIONS {
     annotate_al_fusions.py \\
         --vcf          ${merged_vcf} \\
         --panel-bed    ${panel_bed} \\
+        --gene-model   ${gene_model} \\
         --cytoband-bed ${cytoband_bed} \\
         --dictionary   ${dictionary} \\
         --anchors      ${anchors} \\
