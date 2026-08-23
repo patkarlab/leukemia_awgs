@@ -129,9 +129,22 @@ def bin_depth(bam, chrom: str, start: int, end: int, binsize: int,
               min_mapq: int) -> Tuple[np.ndarray, np.ndarray]:
     """Mean depth per bin. Returns (bin_starts, depths).
 
-    Counted from alignment spans rather than pileup: at this bin size the
-    difference is immaterial and the span walk is an order of magnitude
-    faster over a 40 Mb panel.
+    Counted from aligned blocks, not the reference span. A read carrying a
+    deletion has reference_end past the deleted interval, so walking
+    start->end credits coverage to bases the read does not align to. That is
+    the one error a gene-level CNV caller cannot afford: it fills in exactly
+    the dip it exists to find. The effect scales with read length over event
+    size, so with ~5 kb ONT reads a 100 kb deletion is attenuated while a
+    5 kb intragenic deletion is close to erased.
+
+    get_blocks() returns the M/=/X intervals and skips D and N, which is the
+    definition of aligned coverage.
+
+    Supplementary alignments are counted. A read split across a breakpoint
+    carries its far-side segment as a supplementary record; excluding those
+    undercounts coverage on one side of every SV, which is the same error
+    with the opposite sign. Secondary alignments are still excluded, and the
+    realignment step runs minimap2 with --secondary=no, so there are none.
     """
     n = max(1, (end - start) // binsize)
     edges = start + np.arange(n + 1) * binsize
@@ -141,20 +154,21 @@ def bin_depth(bam, chrom: str, start: int, end: int, binsize: int,
     except ValueError:
         return edges[:-1], cov
     for a in it:
-        if a.is_unmapped or a.is_secondary or a.is_supplementary:
+        if a.is_unmapped or a.is_secondary:
             continue
         if a.mapping_quality < min_mapq:
             continue
-        s = max(a.reference_start, start)
-        e = min(a.reference_end or s, end)
-        if e <= s:
-            continue
-        lo = (s - start) // binsize
-        hi = min(n - 1, (e - 1 - start) // binsize)
-        for b in range(lo, hi + 1):
-            bs = start + b * binsize
-            be = bs + binsize
-            cov[b] += (min(e, be) - max(s, bs))
+        for bs_ref, be_ref in a.get_blocks():
+            s = max(bs_ref, start)
+            e = min(be_ref, end)
+            if e <= s:
+                continue
+            lo = (s - start) // binsize
+            hi = min(n - 1, (e - 1 - start) // binsize)
+            for b in range(lo, hi + 1):
+                bs = start + b * binsize
+                be = bs + binsize
+                cov[b] += (min(e, be) - max(s, bs))
     return edges[:-1], cov / binsize
 
 
