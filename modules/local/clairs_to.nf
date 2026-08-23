@@ -8,9 +8,9 @@ process CLAIRS_TO {
     output:
     tuple val(meta), path("clairs_to_out"),                                                emit: outdir
     tuple val(meta), path("clairs_to_out/snv_${meta.id}.vcf.gz"),
-                     path("clairs_to_out/snv_${meta.id}.vcf.gz.tbi"),     optional: true, emit: snv_vcf
+                     path("clairs_to_out/snv_${meta.id}.vcf.gz.tbi"),                     emit: snv_vcf
     tuple val(meta), path("clairs_to_out/indel_${meta.id}.vcf.gz"),
-                     path("clairs_to_out/indel_${meta.id}.vcf.gz.tbi"),   optional: true, emit: indel_vcf
+                     path("clairs_to_out/indel_${meta.id}.vcf.gz.tbi"),                   emit: indel_vcf
     path "versions.yml",                                                                    emit: versions
 
     script:
