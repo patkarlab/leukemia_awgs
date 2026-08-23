@@ -52,7 +52,7 @@ workflow HG38_TRACK {
     }
 
     if (!params.skip_clair3_phased) {
-        CLAIR3_PHASED(hg38_bam_bai)
+        CLAIR3_PHASED(with_bed)
         if (!params.skip_vep_annotate) {
             VEP_ANNOTATE_CLAIR3(CLAIR3_PHASED.out.merge_output)
             if (!params.skip_al_filter) {

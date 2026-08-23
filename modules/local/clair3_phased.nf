@@ -4,7 +4,7 @@ process CLAIR3_PHASED {
     label    'process_long'
 
     input:
-    tuple val(meta), path(bam), path(bai)
+    tuple val(meta), path(bam), path(bai), path(panel_bed)
 
     output:
     tuple val(meta), path("clair3_out"),                                                                emit: outdir
@@ -54,8 +54,9 @@ process CLAIR3_PHASED {
         /opt/bin/run_clair3.sh \\
             --bam_fn=${bam} \\
             --ref_fn=${params.hg38_fasta} \\
+            --bed_fn=${panel_bed} \\
             --output=clair3_out \\
-            --threads=${params.clair3_threads} \\
+            --threads=${task.cpus} \\
             --platform=${params.clair3_platform} \\
             --model_path=${model_path} \\
             --enable_phasing \\
