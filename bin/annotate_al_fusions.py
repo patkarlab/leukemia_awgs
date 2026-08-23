@@ -463,6 +463,23 @@ def gene_for(chrom, pos, model):
     return best.name if best else None
 
 
+def dist_to_gene(chrom, pos, name, model):
+    """Bases from this coordinate to the named gene's body; 0 if inside.
+
+    None when the label is not a gene in the model - a named interval such as
+    IGH_locus, or a cytoband - because there is no body to measure from.
+    """
+    if not model or chrom is None or pos is None or not name:
+        return None
+    best = None
+    for reg in model:
+        if reg.chrom == chrom and reg.name == name:
+            d = max(reg.start - pos, pos - reg.end, 0)
+            if best is None or d < best:
+                best = d
+    return best
+
+
 def characterize_side(chrom, pos, region, cytobands, gene_model=None):
     """Return (label, source, band) for one breakpoint side.
 
@@ -499,6 +516,9 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name,
         gene_b, src_b, band_b = characterize_side(
             r.mate_chrom, r.mate_pos, side_b, cytobands, gene_model)
 
+        dist_a = dist_to_gene(r.chrom, r.pos, gene_a, gene_model)
+        dist_b = dist_to_gene(r.mate_chrom, r.mate_pos, gene_b, gene_model)
+
         hit, quality = dictionary_lookup(dictionary, gene_a, gene_b, band_a, band_b)
 
         # Span guard. A cryptic-deletion pair whose two partners share one
@@ -519,7 +539,22 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name,
                                  f"{hit.get('name','pair')}; entity removed")
                     hit, quality = None, "below_span"
 
-        hits = anchor_hits(anchors, gene_a, gene_b)
+        # An anchor names a gene, so the breakend should be in that gene,
+        # not merely inside the panel interval surrounding it. 22.8 Mb of the
+        # 41.6 Mb panel is flank rather than gene body, and on one sample 326
+        # of 431 gene-named breakends sat more than 20 kb from the gene they
+        # were named after. The consequence was concrete: an ART1 germline CNV
+        # reported as a NUP98 deletion in all three validation samples,
+        # because the NUP98 panel interval begins 50 kb before the gene and
+        # covers ART1 entirely.
+        #
+        # A named interval (IGH_locus, HOXA_cluster, PAR1_CRLF2_P2RY8) has no
+        # gene body to measure from, so dist is None and it is exempt: those
+        # labels describe the whole interval accurately, and IGH must still be
+        # able to fire an anchor for IGH::CRLF2.
+        anchor_a = gene_a if dist_a in (0, None) else None
+        anchor_b = gene_b if dist_b in (0, None) else None
+        hits = anchor_hits(anchors, anchor_a, anchor_b)
 
         # An event is reportable when the dictionary names it, or when it
         # touches a promiscuous anchor. Everything else is emitted too but
@@ -538,6 +573,8 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name,
             "chrom_b":         r.mate_chrom or "",
             "pos_b":           str(r.mate_pos) if r.mate_pos is not None else "",
             "gene_b":          gene_b,
+            "gene_a_dist":     "" if dist_a is None else str(dist_a),
+            "gene_b_dist":      "" if dist_b is None else str(dist_b),
             "gene_a_source":   src_a,
             "gene_b_source":   src_b,
             "band_a":          band_a or "",
@@ -564,7 +601,8 @@ def annotate(records, panel, dictionary, anchors, sample, cytobands, panel_name,
 COLUMNS = [
     "sample", "panel", "sv_id", "sv_type", "filter",
     "chrom_a", "pos_a", "gene_a", "chrom_b", "pos_b", "gene_b",
-    "gene_a_source", "gene_b_source", "band_a", "band_b",
+    "gene_a_source", "gene_b_source", "gene_a_dist", "gene_b_dist",
+    "band_a", "band_b",
     "known_pair", "entity", "tier", "known_freq", "match_quality",
     "anchor", "anchor_class", "reportable", "dict_notes",
     "callers", "n_callers", "supp_vec", "support_reads",
