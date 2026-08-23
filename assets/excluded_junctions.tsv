@@ -34,3 +34,6 @@ chr8	128649020	chr3	114276053	200	BC13,BC14	MYC; identical bases in two patients
 chr8	48045734	chrX	118117697	200	BC13,BC14	SEPTIN6
 chr5	135144977	chr1	150722938	200	BC13,BC14	JADE2
 chr3	161408065	chr4	77465203	200	BC14,BC15	MLF1
+chr22	22545508	chrY	5292213	200	3 patients, 3 depths	IGL anchor; one chr22 base to three patients at three depths, and one of the three has no Y chromosome (MSY depth 0.03x)
+chr22	22545519	chrY	5286180	200	3 patients, 3 depths	IGL anchor, second chrY partner 6 kb from the first; same reasoning
+chr22	22542800	chrY	5286180	500	3 patients, 3 depths	IGL anchor, reciprocal orientation of the row above; chr22 side sits 2.6 kb proximal with a 385 bp spread

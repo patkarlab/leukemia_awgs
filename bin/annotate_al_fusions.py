@@ -711,10 +711,16 @@ def main() -> int:
                 f"  {r.get('gene_a','')} x {r.get('gene_b','')}  "
                 f"{k[0]}:{k[1]} x {k[2]}:{k[3]}  — {why}\n")
 
-    n_report = sum(1 for r in rows if r["reportable"] == "yes")
-    n_named = sum(1 for r in rows if r["known_pair"])
+    # Count the table that was written, not the one before exclusion. These
+    # were computed over `rows` while `keep` is what reaches the file, so the
+    # summary described a table that did not exist: dropping four junctions
+    # left the reportable figure unchanged on all three validation samples.
+    written = [r for r, _ in keep]
+    n_report = sum(1 for r in written if r["reportable"] == "yes")
+    n_named = sum(1 for r in written if r["known_pair"])
     sys.stderr.write(
-        f"{args.sample} [{args.panel}]: {len(rows)} on-panel SV records, "
+        f"{args.sample} [{args.panel}]: {len(written)} on-panel SV records "
+        f"({len(dropped)} excluded), "
         f"{n_report} reportable, {n_named} named by dictionary "
         f"({len(dictionary)} pairs, {len(anchors)} anchor tokens in scope) "
         f"-> {args.output}\n")
