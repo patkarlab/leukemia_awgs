@@ -285,7 +285,28 @@ def dictionary_lookup(dictionary: List[DictEntry], label_a: str, label_b: str,
 
 
 def anchor_hits(anchors: Dict[str, dict], label_a: str, label_b: str) -> List[dict]:
-    """Anchor rows triggered by either side of a junction."""
+    """Anchor rows triggered by either side of a junction.
+
+    A self-pair returns nothing. An anchor is a claim about partners: the
+    gene rearranges with many of them, so any partner is worth surfacing.
+    A gene joined to itself has no partner, and the premise does not apply.
+    Without this guard, every intragenic indel at an anchor inherits
+    reportability from a rule that was never about it: on one validation
+    sample 513 of 589 reportable rows were self-pairs, 335 of them V(D)J
+    and somatic hypermutation products inside IGH, IGK, IGL and the TCR
+    loci, which recombine physiologically and are not lesions.
+
+    Dictionary matching is untouched. No row in the dictionary pairs a gene
+    with itself or one locus with another, so no self-pair can carry a tier;
+    if one ever could, the caller's `hit or hits` keeps that path open.
+
+    Ordinary-gene self-pairs are real intragenic events and stay in the
+    table as reportable=no. They are not fusions and should not be graded
+    by a partner-pair dictionary; representing them properly is a separate
+    change.
+    """
+    if label_a and label_b and label_a == label_b:
+        return []
     hits, seen = [], set()
     for label in (label_a, label_b):
         for tok in norm_tokens(label):
