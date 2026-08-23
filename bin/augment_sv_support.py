@@ -115,7 +115,7 @@ def load_caller(path, value_kind):
             cols = line.rstrip("\n").split("\t")
             if len(cols) < 8:
                 continue
-            chrom, pos, _id, _ref, alt, _q, _filt, info_field = cols[:8]
+            chrom, pos, _id, _ref, alt, _q, filt, info_field = cols[:8]
             pos = int(pos)
             info = parse_info(info_field)
             svtype = info.get("SVTYPE", "")
@@ -137,7 +137,7 @@ def load_caller(path, value_kind):
                 if not (end and end.isdigit()):
                     continue
                 ca, pa, cb, pb = canon(chrom, pos, chrom, int(end))
-            out.append((ca, pa, cb, pb, sup))
+            out.append((ca, pa, cb, pb, sup, filt))
     return out
 
 
@@ -148,14 +148,15 @@ def best_match(ca, pa, cb, pb, records, tol):
     attributed to the corresponding breakpoint rather than the strongest nearby
     one. Ties in distance are broken by higher support."""
     best_sup = None
+    best_filt = None
     best_dist = None
-    for (rca, rpa, rcb, rpb, sup) in records:
+    for (rca, rpa, rcb, rpb, sup, filt) in records:
         if rca == ca and rcb == cb and abs(rpa - pa) <= tol and abs(rpb - pb) <= tol:
             dist = abs(rpa - pa) + abs(rpb - pb)
             if (best_dist is None or dist < best_dist
                     or (dist == best_dist and (best_sup is None or sup > best_sup))):
-                best_dist, best_sup = dist, sup
-    return best_sup
+                best_dist, best_sup, best_filt = dist, sup, filt
+    return best_sup, best_filt
 
 
 def main():
@@ -178,7 +179,9 @@ def main():
         in_cols = list(reader.fieldnames or [])
         rows = [dict(r) for r in reader]
 
-    new_cols = ["support_sniffles", "support_cutesv", "support_severus"]
+    new_cols = ["support_sniffles", "support_cutesv", "support_severus",
+                "filter_sniffles", "filter_cutesv", "filter_severus",
+                "filter_worst"]
     out_cols = in_cols + [c for c in new_cols if c not in in_cols]
 
     n_pop = 0
@@ -197,18 +200,27 @@ def main():
         listed = {x.strip().lower() for x in (r.get("callers") or "").split(",") if x.strip()}
         def gated(name, recs):
             if listed and name not in listed:
-                return None
+                return (None, None)
             return best_match(ca, pa, cb, pb, recs, args.tol)
-        s = gated("sniffles", snf)
-        c = gated("cutesv", cut)
-        v = gated("severus", sev)
+        s, sf = gated("sniffles", snf)
+        c, cf = gated("cutesv", cut)
+        v, vf = gated("severus", sev)
         r["support_sniffles"] = str(s) if s is not None else ""
         r["support_cutesv"]   = str(c) if c is not None else ""
         r["support_severus"]  = str(v) if v is not None else ""
+        r["filter_sniffles"]  = sf or ""
+        r["filter_cutesv"]    = cf or ""
+        r["filter_severus"]   = vf or ""
         present = [x for x in (s, c, v) if x is not None]
         if present:
             r["support_reads"] = str(max(present))
             n_pop += 1
+        # Worst FILTER across the callers that saw this junction. SURVIVOR
+        # stamps PASS on every merged record, so the merged filter column
+        # carries no quality information; this one does.
+        seen = [f for f in (sf, cf, vf) if f]
+        nonpass = sorted({f for f in seen if f != "PASS"})
+        r["filter_worst"] = ";".join(nonpass) if nonpass else ("PASS" if seen else "")
 
     with open(args.output, "w", newline="") as out:
         w = csv.DictWriter(out, fieldnames=out_cols, delimiter="\t",
